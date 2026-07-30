@@ -1,0 +1,30 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: typecheck
+        run: npm run typecheck
+      - name: lint
+        run: npm run lint
+      - name: build
+        run: npm run build
+
+      # The suites that build their own synthetic repository. The two that assert
+      # against a real codebase skip themselves unless HEXWRIGHT_TEST_REPO points
+      # at one — nothing here depends on a particular machine or project.
+      - name: test
+        run: npm test

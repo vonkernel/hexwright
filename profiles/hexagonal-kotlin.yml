@@ -1,0 +1,80 @@
+# Hexagonal architecture, domain-first (package-by-feature).
+#
+# The top level is a bounded context, not a layer; the three layers repeat inside each domain.
+# Another project only has to swap this file — port/in vs port/inbound,
+# infrastructure vs adapter, and so on are all absorbed here.
+name: hexagonal-kotlin
+language: kotlin
+
+domain:
+  # What identifies a domain. package = a package segment.
+  from: package
+  # Strip this prefix first
+  base: ""            # injected by --base-package. empty = infer the common prefix
+  # which segment is the domain (0-based, after the prefix is stripped)
+  at: 0
+
+# Path fragments to exclude from analysis
+exclude:
+  - /config/
+  - /test/
+  - /generated/
+
+# Layers — decided by path fragment. First match from the top wins.
+layers:
+  adapter: /adapter/
+  application: /application/
+  domain: /domain/
+  common: /common/
+
+# Subdivisions within a layer
+sublayers:
+  port/inbound: /application/port/inbound/
+  port/out: /application/port/out/
+  service: /application/service/
+  security: /application/security/
+  model: /domain/model/
+  event: /domain/event/
+
+# Adapter direction — only outbound may touch an aggregate
+adapterKinds:
+  out: /adapter/out/
+  in: /adapter/web/
+  event: /adapter/event/
+
+# Component classification. First matching rule from the top wins.
+# nameEnds is an exception applied before layer, regardless of it.
+components:
+  - { nameEnds: Exception, as: Error }
+  - { layer: common, as: Shared }
+  - { layer: adapter, as: Adapter }
+  - { sublayer: model, kinds: [value class], as: VO }
+  - { sublayer: model, kinds: [enum class], as: VO }
+  - { sublayer: model, kinds: [data class], as: VO }
+  - { sublayer: model, as: Entity }
+  - { sublayer: event, as: Event }
+  - { sublayer: security, as: Service }
+  - { sublayer: service, kinds: [data class], as: Shared }
+  - { sublayer: service, nameEnds: Properties, as: Shared }
+  - { sublayer: service, as: Service }
+  - { sublayer: port/inbound, structs: [interface], as: UseCase }
+  - { sublayer: port/inbound, as: DTO }
+  - { sublayer: port/out, structs: [interface], as: Port }
+  - { sublayer: port/out, as: DTO }
+  - { nameEnds: Id, as: VO }          # identifiers filed under the wrong layer
+  - { kinds: [enum class], as: VO }
+  - { as: DTO }                        # everything else
+
+# Design rules
+rules:
+  # What may touch an Entity — within the same domain
+  entityAccess:
+    allow: [Service, Port, Entity]
+    # outbound adapters too: port implementations have to map aggregates
+    allowAdapterKinds: [out]
+    crossDomain: deny
+  # No back-reference from the core to an adapter
+  layering:
+    - from: [application, domain]
+      to: [adapter]
+      message: layer back-reference

@@ -1,0 +1,69 @@
+{
+  "name": "hexwright",
+  "version": "0.1.0",
+  "description": "Design graph for hexagonal-architecture codebases. Renders what a branch changed as one picture a human can confirm at a glance, and gives a coding agent boundary verdicts it can run on itself before asking for review.",
+  "keywords": [
+    "hexagonal-architecture",
+    "ports-and-adapters",
+    "architecture",
+    "dependency-graph",
+    "static-analysis",
+    "kotlin",
+    "spring-boot",
+    "code-review",
+    "human-in-the-loop",
+    "coding-agent",
+    "mcp",
+    "mcp-server",
+    "visualization",
+    "svg"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vonkernel/hexwright.git"
+  },
+  "homepage": "https://github.com/vonkernel/hexwright#readme",
+  "bugs": {
+    "url": "https://github.com/vonkernel/hexwright/issues"
+  },
+  "bin": {
+    "hexwright": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "profiles"
+  ],
+  "scripts": {
+    "dev": "node --watch src/cli.ts",
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "biome check .",
+    "prepublishOnly": "npm run build && npm run typecheck"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "cytoscape": "^3.34.0",
+    "cytoscape-fcose": "^2.2.0",
+    "yaml": "^2.6.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "@types/cytoscape": "^3.21.9",
+    "@types/node": "^22.10.0",
+    "@xmldom/xmldom": "^0.9.10",
+    "esbuild": "^0.28.1",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "optionalDependencies": {
+    "@resvg/resvg-js": "^2.6.2"
+  }
+}
