@@ -25,6 +25,28 @@ interface FileInfo {
   decls: Decl[];
   lines: string[];
   layer: string;
+  /** typealias name to its right-hand side, as written */
+  aliases: Map<string, string>;
+  /**
+   * Lines holding a top-level construct that is not a declaration. They carry no
+   * node, but they bound the body of the declaration above.
+   */
+  stops: number[];
+}
+
+/**
+ * Where a declaration's body ends: at the next declaration, or at the first
+ * top-level construct after it — whichever comes first.
+ *
+ * Without the second bound a `typealias` or a file-level function is read as part
+ * of the class above it, and every type it names is counted as a reference from
+ * that class. That reported a boundary breach against types that did not have one.
+ */
+function bodyEnd(fi: FileInfo, di: number): number {
+  const d = fi.decls[di] as Decl;
+  let end = di + 1 < fi.decls.length ? (fi.decls[di + 1] as Decl).line : fi.lines.length;
+  for (const s of fi.stops) if (s > d.line && s < end) end = s;
+  return end;
 }
 
 /** One parsed type plus its signatures — used to find edges, not carried in the graph. */
@@ -75,6 +97,8 @@ export function extractKotlin(
     let pkg = "";
     const imports = new Map<string, string>();
     const decls: Decl[] = [];
+    const aliases = new Map<string, string>();
+    const stops: number[] = [];
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i] as string;
       const pm = K.PACKAGE.exec(line);
@@ -88,6 +112,7 @@ export function extractKotlin(
         imports.set(im[2] ?? (fq.split(".").pop() as string), fq);
         continue;
       }
+      // DECL first: `fun interface` opens with `fun` but declares a type.
       const dm = K.DECL.exec(line);
       if (dm?.groups) {
         decls.push({
@@ -95,10 +120,76 @@ export function extractKotlin(
           line: i,
           kind: K.kindOf(dm.groups.mods ?? "", dm.groups.kw as string),
         });
+        continue;
       }
+      const am = K.TYPEALIAS.exec(line);
+      if (am) {
+        aliases.set(am[1] as string, am[2] as string);
+        stops.push(i);
+        continue;
+      }
+      if (K.TOP_LEVEL.test(line)) stops.push(i);
     }
     rawPkgs.push(pkg);
-    infos.push({ rel, pkg, imports, decls, lines, layer: layerOf(profile, `/${rel}`) });
+    infos.push({
+      rel,
+      pkg,
+      imports,
+      decls,
+      lines,
+      layer: layerOf(profile, `/${rel}`),
+      aliases,
+      stops,
+    });
+  }
+
+  // -- 1b) resolve type aliases ---------------------------------------
+  // An alias is not a type of its own — it stands for its right-hand side. Expanding
+  // it before references are counted keeps the reference on the declaration that
+  // names the alias; dropping the alias instead would lose that edge entirely.
+  interface Alias {
+    rhs: string;
+    /** where it was declared — the right-hand side resolves in that file's scope */
+    from: FileInfo;
+  }
+  const aliasByFq = new Map<string, Alias>();
+  for (const fi of infos) {
+    for (const [name, rhs] of fi.aliases) aliasByFq.set(`${fi.pkg}.${name}`, { rhs, from: fi });
+  }
+
+  for (const fi of infos) {
+    const reach = new Map<string, Alias>();
+    for (const [name, rhs] of fi.aliases) reach.set(name, { rhs, from: fi });
+    for (const [simple, fq] of fi.imports) {
+      const a = aliasByFq.get(fq);
+      if (a) reach.set(simple, a);
+    }
+    for (const [fq, a] of aliasByFq) {
+      const dot = fq.lastIndexOf(".");
+      const name = fq.slice(dot + 1);
+      if (fq.slice(0, dot) === fi.pkg && !reach.has(name)) reach.set(name, a);
+    }
+    if (!reach.size) continue;
+
+    // Expanding an alias imported from elsewhere introduces names this file never
+    // imported — importing the alias instead of the underlying type is the whole
+    // point of one. Carry the declaring file's bindings across so they still resolve.
+    for (const { rhs, from } of reach.values()) {
+      if (from === fi) continue;
+      for (const [name] of rhs.matchAll(K.TYPENAME)) {
+        const nm = name as string;
+        if (!fi.imports.has(nm)) fi.imports.set(nm, from.imports.get(nm) ?? `${from.pkg}.${nm}`);
+      }
+    }
+
+    // Twice, so an alias of an alias resolves. The declaration lines themselves are
+    // left alone — they are stops, and rewriting them only mangles the text.
+    for (let pass = 0; pass < 2; pass++) {
+      for (const [name, a] of reach) {
+        const re = new RegExp(`\\b${name}\\b`, "g");
+        fi.lines = fi.lines.map((l) => (K.TYPEALIAS.test(l) ? l : l.replace(re, a.rhs)));
+      }
+    }
   }
 
   const base = profile.domain.base || inferBasePackage(rawPkgs);
@@ -121,7 +212,7 @@ export function extractKotlin(
 
     for (let di = 0; di < fi.decls.length; di++) {
       const d = fi.decls[di] as Decl;
-      const end = di + 1 < fi.decls.length ? (fi.decls[di + 1] as Decl).line : fi.lines.length;
+      const end = bodyEnd(fi, di);
       const body = fi.lines.slice(d.line, end);
       const struct = K.structOf(d.kind);
       const sigs = K.collectSigs(body);
@@ -193,7 +284,7 @@ export function extractKotlin(
     for (let di = 0; di < fi.decls.length; di++) {
       const d = fi.decls[di] as Decl;
       const id = `${fi.pkg}.${d.name}`;
-      const end = di + 1 < fi.decls.length ? (fi.decls[di + 1] as Decl).line : fi.lines.length;
+      const end = bodyEnd(fi, di);
       const body = fi.lines.slice(d.line, end).join("\n");
 
       for (const sup of K.parseSupertypes(fi.lines, d.line)) {
@@ -249,7 +340,7 @@ export function extractKotlin(
     for (let di = 0; di < fi.decls.length; di++) {
       const d = fi.decls[di] as Decl;
       const id = `${fi.pkg}.${d.name}`;
-      const end = di + 1 < fi.decls.length ? (fi.decls[di + 1] as Decl).line : fi.lines.length;
+      const end = bodyEnd(fi, di);
       const body = fi.lines.slice(d.line, end).join("\n");
 
       // variable to type: start from explicit declarations, propagate through call returns.

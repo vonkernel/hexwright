@@ -17,6 +17,22 @@ export const DECL = new RegExp(
   `^(?<mods>${MODS})(?<kw>class|interface|object)\\s+(?<name>[A-Za-z_]\\w*)`,
 );
 
+const TOP_MODS =
+  "(?:public |internal |private |expect |actual |external |inline |suspend |operator |infix |tailrec |const |lateinit )*";
+/** A file-level `typealias`, capturing the name and the right-hand side. */
+export const TYPEALIAS = new RegExp(
+  `^${TOP_MODS}typealias\\s+(\\w+)(?:<[^>]*>)?\\s*=\\s*(.+?)\\s*$`,
+);
+/**
+ * A top-level construct the graph does not model — a `typealias`, or a file-level
+ * function, property or constant. Nothing here becomes a node, but each one ends
+ * the body of the declaration above it. Test DECL first: `fun interface` starts
+ * with `fun` and is a declaration, not a file-level function.
+ */
+export const TOP_LEVEL = new RegExp(
+  `^(?:@\\w+(?:\\([^)]*\\))?\\s+)*${TOP_MODS}(?:typealias|fun|va[lr])\\s`,
+);
+
 const FUN_MODS =
   "(?:override |open |abstract |suspend |operator |private |internal |protected |inline |final )*";
 export const SIG = new RegExp(
