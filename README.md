@@ -90,19 +90,58 @@ as a hub with the domains that touch it around it.
 | `impact` | the above plus everything that depends on a changed type |
 | `core` | Entity · Service · UseCase · Port · Event — the whole shape |
 | `all` | everything, adapters and DTOs included |
+| `violations` | only the breaches, and the types they run through |
 | `domain:<name>` | one bounded context and what it touches |
+
+`violations` is a **state** view: it draws what is wrong now, not what this branch
+changed. Unlike the toggle in the web UI it is not narrowed by component, because
+a violation with one end hidden reads as no violation at all.
+
+### Before and after
+
+A branch that *removes* violations, or swaps one port for another, is not
+described by the delta alone. The picture worth showing is the state it started
+from — which is exactly the state the working tree no longer has. `--at base`
+draws the same types in their pre-branch state:
+
+```bash
+hexwright render --repo . --base main --at base --image before.png
+hexwright render --repo . --base main            --image after.png
+```
+
+The before picture carries **no delta styling** — nothing in a picture of the past
+can be added or modified — and violations stay red, which is the question it
+exists to answer. It needs `--base`. A branch that only adds types has no before
+state at all; the command says so and exits 0.
 
 There is no browser involved — the coordinates are a pure function, so the SVG
 is written directly and CI needs no headless Chrome. The same graph always draws
-the same file, which is what makes two branches comparable.
+the same file, so re-rendering a branch is stable and nothing drifts between runs.
+Positions do follow the *set* of types drawn, so a before/after pair does not line
+up: the two sets differ by whatever the branch added or removed. Read them side by
+side rather than flipping between them.
 
 `--image x.png` also writes `x.svg`. PNG needs the optional `@resvg/resvg-js`;
 without it the SVG is still written and the command says so. GitHub does not
 render SVG in comments, so attach the PNG there and keep the SVG as the artifact.
 
-Layout follows the view — `organic` for `delta` and `domain:`, `hex` for `core`
-and `all` (concentric rings, read as a shape). `--layout organic|grid|hex`
-overrides; `grid` lists domains left to right, ignoring coupling.
+Layout follows the view — `organic` for `delta`, `domain:` and `violations`, `hex`
+for `core` and `all` (concentric rings, read as a shape). `--layout
+organic|grid|hex` overrides; `grid` lists domains left to right, ignoring
+coupling.
+
+## Exit codes
+
+| command | 1 | 0 |
+|---|---|---|
+| `check` | the repository has a violation — with `--scope delta`, only one the branch introduced | otherwise |
+| `render` | a bad argument, or a base ref that is not in the clone | an image was written, **or there was nothing to draw** |
+| `extract` | the source root or the base ref cannot be read | otherwise |
+
+`render` treats an empty picture as an answer rather than a failure. `--view
+violations` on the branch that removed the last one, and `--at base` on a branch
+that only adds types, both print what happened and exit 0 — a non-zero exit there
+would break the very script that produces the pair.
 
 ## MCP
 

@@ -46,6 +46,97 @@ that looked local.
 
 Use `delta` to answer *what was built* and `impact` to answer *what might break*.
 
+## The picture that no longer exists
+
+Both renders above answer *what this branch built*. On a branch that removes
+violations, or replaces one port with another, the more useful half is the state
+it started from — and that is precisely the state your working tree no longer has.
+
+`--at base` draws the same types the delta covers, as they stood before the branch:
+
+```bash
+# before — the state this branch is changing
+npx hexwright render --repo . --src server --base origin/main \
+  --at base --image before.png
+
+# after — what it becomes
+npx hexwright render --repo . --src server --base origin/main \
+  --image after.png
+```
+
+```
+my-service @ main
+  view    the types this branch touches, as they stand
+  drew    21 types · 18 relations · 7 violations
+  wrote   before.svg  (19 KB)
+```
+
+Note the ref in the header: `main`, not the branch. The picture is the base.
+
+The pair reads as **state → change**:
+
+| | answers |
+|---|---|
+| `--at base` | these types as they were, breaches in red |
+| the default | what the branch adds and modifies |
+
+For a PR that *fixes* structure rather than adding it, that pair is the artifact
+that answers the reviewer's actual question — and the `after` half showing no red
+means far more next to a `before` that has seven.
+
+### Why the before picture has no orange
+
+It carries no delta styling at all, and that is deliberate. Delta annotations are
+forward-looking: a type is *added* relative to something. In a picture of the past
+nothing can be added or modified, and a type the branch is about to **delete**
+drawn with the solid orange outline that means *new* is worse than no annotation —
+it says the opposite of the truth.
+
+Violations stay red, because a violation is a verdict on a state rather than a
+delta annotation. "Where does it breach" is the whole question a before picture
+exists to answer.
+
+### Only the breaches
+
+`--view violations` narrows any render to the types a violation runs through, and
+only the violating edges:
+
+```bash
+npx hexwright render --repo . --src server --view violations --image viol.png
+```
+
+It is a state view, so it works with or without `--base`, and combines with
+`--at base`. On a large codebase this is the difference between a readable image
+and an unreadable one: 21 types instead of the 247 that `--view core` draws.
+
+The web UI's `⚠ Violations only` toggle is narrowed by the component filter, so
+under the default Core-only preset a breach whose far end is an Adapter keeps the
+core endpoint and loses the line. The flag deliberately does not do that — a
+standalone image with a half-drawn violation is worse than one with none.
+
+### Two limits worth knowing
+
+**A branch that only adds types has no before state.** Nothing it draws exists in
+the base, so there is nothing to render. The command says so and **exits 0** — the
+default delta view already answers that case, and failing would break a script
+that renders both halves unconditionally.
+
+```
+my-service @ main
+  nothing this branch touches exists here — nothing to draw
+```
+
+The same applies to `--view violations` on a clean branch: `no violations —
+nothing to draw`, exit 0. That is the good outcome, and it is reported as one.
+
+**The pair does not line up.** Positions follow the set of types drawn, and the
+two sets differ by whatever the branch added or removed — so the canvas size and
+every coordinate shift between the images. Put them side by side in the PR; do
+not expect to flip between them.
+
+Costwise this is nearly free: the base snapshot is already extracted to compute
+the delta, so `--at base` chooses what to draw rather than analysing twice.
+
 ## The same thing as text
 
 If you want the change in the terminal, or in a comment body rather than an
@@ -96,7 +187,10 @@ Three things carry meaning, and they are independent of each other:
   short-dashed one.
 
 Coordinates are deterministic — the same graph always draws the same file — so
-two renders of two branches can be compared directly.
+re-rendering a branch is stable and nothing drifts between runs. They follow the
+set of types drawn, though, so two renders of two different sets place the same
+type differently; see [the picture that no longer
+exists](#the-picture-that-no-longer-exists).
 
 ## Checking boundaries
 
