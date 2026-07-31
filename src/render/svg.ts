@@ -485,8 +485,8 @@ function legendBlock(
   y += 24;
   rows.push(
     `<text x="26" y="${y + 4}" font-size="10" fill="${DIM}">` +
-      `colour = domain · saturation = position in the hexagon (Entity darkest → outward lighter)` +
-      ` · coordinates are deterministic, so two branches line up</text>`,
+      "colour = domain · saturation = position in the hexagon (Entity darkest → outward lighter)" +
+      " · coordinates are deterministic, so two branches line up</text>",
   );
 
   return { svg: rows.join("\n"), h: y + 22 - top };

@@ -181,7 +181,7 @@ function main(): number {
       process.stdout.write(
         px
           ? `  wrote   ${out}  (${px})\n`
-          : `  note    PNG skipped — install @resvg/resvg-js for rasterizing\n`,
+          : "  note    PNG skipped — install @resvg/resvg-js for rasterizing\n",
       );
     }
     return 0;
