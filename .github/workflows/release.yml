@@ -1,0 +1,74 @@
+name: release
+
+# Publishing is a tag push, so the thing that ships and the thing that records what
+# shipped are the same act. Nothing publishes from a branch.
+#
+# Requires one secret: NPM_TOKEN, an npm granular access token with publish rights
+# on `hexwright`. Without it the publish step fails and nothing else is affected —
+# the tag stays, and pushing it again after adding the secret re-runs this.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # create the GitHub Release
+  id-token: write # npm provenance — the repo is public, so attestation is possible
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # the ancestry check needs history, not just the tag
+
+      # A tag can be put on any commit, including one that never merged. Releases
+      # come from main or they do not happen.
+      - name: the tag has to be on main
+        run: |
+          git fetch --no-tags --quiet origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || {
+            echo "::error::$GITHUB_REF_NAME points at a commit that is not on main"
+            exit 1
+          }
+
+      # The tag names a version; package.json decides what npm actually receives.
+      # When they disagree the tag is a lie about what shipped, which is worse than
+      # a failed release because it is only discovered later.
+      - name: the tag has to match the version it claims
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(node -p "require('./package.json').version")"
+          [ "$tag" = "$pkg" ] || {
+            echo "::error::tag $GITHUB_REF_NAME claims $tag, package.json says $pkg"
+            exit 1
+          }
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+
+      # The same gate a pull request has to clear. A tag must not ship something
+      # that could not have been merged.
+      - name: typecheck
+        run: npm run typecheck
+      - name: lint
+        run: npm run lint
+      - name: test
+        run: npm test
+
+      # prepublishOnly builds and typechecks again, so dist is produced here rather
+      # than committed. --provenance signs the tarball with this workflow's identity.
+      - name: publish
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # Last, so a release only appears for something that actually published.
+      - name: github release
+        run: gh release create "$GITHUB_REF_NAME" --generate-notes --verify-tag
+        env:
+          GH_TOKEN: ${{ github.token }}
