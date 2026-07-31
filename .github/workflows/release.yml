@@ -3,16 +3,17 @@ name: release
 # Publishing is a tag push, so the thing that ships and the thing that records what
 # shipped are the same act. Nothing publishes from a branch.
 #
-# Requires one secret: NPM_TOKEN, an npm granular access token with publish rights
-# on `hexwright`. Without it the publish step fails and nothing else is affected —
-# the tag stays, and pushing it again after adding the secret re-runs this.
+# Authentication is npm trusted publishing: npmjs.com is configured to trust this
+# repository and this workflow file by name, and the OIDC token GitHub mints for
+# the job is exchanged for publish rights. There is no npm token to leak, rotate or
+# have expire — and renaming this file breaks publishing until npm is told.
 on:
   push:
     tags: ["v*"]
 
 permissions:
   contents: write # create the GitHub Release
-  id-token: write # npm provenance — the repo is public, so attestation is possible
+  id-token: write # mint the OIDC token npm exchanges for publish rights
 
 jobs:
   publish:
@@ -49,6 +50,15 @@ jobs:
           node-version: 22
           cache: npm
           registry-url: https://registry.npmjs.org
+
+      # Trusted publishing needs npm 11.5.1 or newer. Node 22 ships 10.9.x, which
+      # fails at the exchange rather than at startup, so the version is printed:
+      # a release that stops here should say why in one line.
+      - name: npm new enough for trusted publishing
+        run: |
+          npm install -g npm@latest
+          npm --version
+
       - run: npm ci
 
       # The same gate a pull request has to clear. A tag must not ship something
@@ -61,11 +71,13 @@ jobs:
         run: npm test
 
       # prepublishOnly builds and typechecks again, so dist is produced here rather
-      # than committed. --provenance signs the tarball with this workflow's identity.
+      # than committed.
+      #
+      # No token and no --provenance: OIDC covers authentication, and publishing
+      # this way attaches a provenance attestation on its own. Passing a token here
+      # would be worse than redundant — npm would use it instead of the exchange.
       - name: publish
-        run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public
 
       # Last, so a release only appears for something that actually published.
       - name: github release

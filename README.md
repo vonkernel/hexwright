@@ -393,10 +393,11 @@ than a failed release, because it is only found out later. It then runs the same
 gate a pull request has to clear, publishes with provenance, and opens a GitHub
 Release for the tag.
 
-It needs one secret: `NPM_TOKEN`, an npm granular access token with publish
-rights on `hexwright`. Without it the publish step fails and nothing else is
-affected — the tag stays, and re-pushing it after adding the secret re-runs the
-release.
+There is no npm token. npm is configured to trust this repository and this
+workflow **by filename**, and the OIDC token GitHub mints for the job is exchanged
+for publish rights — so nothing has to be stored, rotated, or kept from expiring.
+The catch is the filename: renaming `release.yml` breaks publishing until npm's
+trusted-publisher entry is updated to match.
 
 ## Status
 
