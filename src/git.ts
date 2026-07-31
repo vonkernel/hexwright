@@ -31,9 +31,9 @@ export function exportRef(
       : [ref, `refs/heads/${ref}`];
     throw new Error(
       `cannot read '${ref}' from ${repo} — the ref is not in this clone.\n` +
-        `  CI checkouts are shallow by default. Either fetch it:\n` +
+        "  CI checkouts are shallow by default. Either fetch it:\n" +
         `    git fetch --no-tags --depth=1 origin ${name}:${dest}\n` +
-        `  or check out with full history (actions/checkout: fetch-depth: 0).`,
+        "  or check out with full history (actions/checkout: fetch-depth: 0).",
     );
   }
   execFileSync("tar", ["-x", "-C", dir], { input: tar });
