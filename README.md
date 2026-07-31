@@ -114,12 +114,17 @@ can be added or modified — and violations stay red, which is the question it
 exists to answer. It needs `--base`. A branch that only adds types has no before
 state at all; the command says so and exits 0.
 
+A before/after pair **lines up**. Positions, domain boxes, colours and canvas
+width all follow the set of types being laid out, and the two halves differ by
+whatever the branch added or removed — so each render lays out from the union of
+both and draws only its own half. A type keeps its place across the pair, and a
+deletion leaves the gap where it used to be. Neither command needs a flag for
+this and neither can be run "wrong": both derive the union from the same two
+graphs.
+
 There is no browser involved — the coordinates are a pure function, so the SVG
 is written directly and CI needs no headless Chrome. The same graph always draws
-the same file, so re-rendering a branch is stable and nothing drifts between runs.
-Positions do follow the *set* of types drawn, so a before/after pair does not line
-up: the two sets differ by whatever the branch added or removed. Read them side by
-side rather than flipping between them.
+the same file.
 
 `--image x.png` also writes `x.svg`. PNG needs the optional `@resvg/resvg-js`;
 without it the SVG is still written and the command says so. GitHub does not

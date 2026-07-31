@@ -114,7 +114,25 @@ under the default Core-only preset a breach whose far end is an Adapter keeps th
 core endpoint and loses the line. The flag deliberately does not do that — a
 standalone image with a half-drawn violation is worse than one with none.
 
-### Two limits worth knowing
+### The two images line up
+
+Put them side by side, or flip between them: a type sits in the same place in
+both, the domain boxes match, the colours match and the canvases are the same
+size. Where the branch deleted something, the after image has a gap exactly where
+it used to be.
+
+That does not happen by itself. Positions, boxes, hues and canvas width are all
+derived from the set of types being laid out, and the two halves differ by
+whatever the branch added or removed — so laying each out from its own set makes
+all four disagree. Each render instead lays out from the **union** of both halves
+and draws only its own.
+
+Neither command takes a flag for it, and neither can be run "wrong" by forgetting
+one: both halves hold the base graph and the head graph, so each works the union
+out on its own and they arrive at the same answer without being told about each
+other.
+
+### One limit worth knowing
 
 **A branch that only adds types has no before state.** Nothing it draws exists in
 the base, so there is nothing to render. The command says so and **exits 0** — the
@@ -129,13 +147,9 @@ my-service @ main
 The same applies to `--view violations` on a clean branch: `no violations —
 nothing to draw`, exit 0. That is the good outcome, and it is reported as one.
 
-**The pair does not line up.** Positions follow the set of types drawn, and the
-two sets differ by whatever the branch added or removed — so the canvas size and
-every coordinate shift between the images. Put them side by side in the PR; do
-not expect to flip between them.
-
-Costwise this is nearly free: the base snapshot is already extracted to compute
-the delta, so `--at base` chooses what to draw rather than analysing twice.
+Costwise the pair is nearly free: the base snapshot is already extracted to
+compute the delta, so `--at base` chooses what to draw rather than analysing
+twice.
 
 ## The same thing as text
 
@@ -188,9 +202,10 @@ Three things carry meaning, and they are independent of each other:
 
 Coordinates are deterministic — the same graph always draws the same file — so
 re-rendering a branch is stable and nothing drifts between runs. They follow the
-set of types drawn, though, so two renders of two different sets place the same
-type differently; see [the picture that no longer
-exists](#the-picture-that-no-longer-exists).
+set of types drawn, so two renders of two different sets would place the same type
+differently; a before/after pair works around that by laying both out from the
+union, which is what makes [the pair
+comparable](#the-picture-that-no-longer-exists).
 
 ## Checking boundaries
 

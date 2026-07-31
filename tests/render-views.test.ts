@@ -131,6 +131,97 @@ describe("a base-state render", () => {
   });
 });
 
+describe("laying out from a frame", () => {
+  // The halves must differ in size, not just in names: two types go, one arrives.
+  // Equal-sized halves can happen to lay out the same and would prove nothing.
+  const before = graph({
+    nodes: [
+      node("m.Kept"),
+      node("m.Doomed"),
+      node("m.AlsoDoomed"),
+      node("m.Shared", { component: "Service" }),
+    ],
+    edges: [
+      edge("m.Kept", "m.Shared"),
+      edge("m.Doomed", "m.Shared"),
+      edge("m.AlsoDoomed", "m.Shared"),
+    ],
+  });
+  const after = graph({
+    nodes: [node("m.Kept"), node("m.Fresh"), node("m.Shared", { component: "Service" })],
+    edges: [edge("m.Kept", "m.Shared"), edge("m.Fresh", "m.Shared")],
+  });
+  const frame = graph({
+    nodes: [
+      node("m.AlsoDoomed"),
+      node("m.Doomed"),
+      node("m.Fresh"),
+      node("m.Kept"),
+      node("m.Shared", { component: "Service" }),
+    ],
+    edges: [...before.edges, edge("m.Fresh", "m.Shared")],
+  });
+  const svgOf = (g: Graph, f?: Graph) =>
+    renderSvg(g, { layout: "organic", viewLabel: "t", ...(f ? { frame: f } : {}) });
+  /** Every node label with its position. */
+  const at = (svg: string) => {
+    const out = new Map<string, string>();
+    for (const m of svg.matchAll(
+      /<text x="([-0-9.]+)" y="([-0-9.]+)"[^>]*text-anchor="middle"[^>]*>(\w+)<\/text>/g,
+    )) {
+      out.set(m[3] as string, `${m[1]},${m[2]}`);
+    }
+    return out;
+  };
+  const canvas = (svg: string) => /viewBox="([^"]+)"/.exec(svg)?.[1];
+
+  it("puts a shared type in the same place in both halves", () => {
+    const b = at(svgOf(before, frame));
+    const a = at(svgOf(after, frame));
+    for (const name of ["Kept", "Shared"]) {
+      expect(a.get(name), name).toBe(b.get(name));
+    }
+  });
+
+  it("gives both halves the same canvas", () => {
+    expect(canvas(svgOf(after, frame))).toBe(canvas(svgOf(before, frame)));
+  });
+
+  it("draws only what it was given, not the whole frame", () => {
+    const b = at(svgOf(before, frame));
+    expect([...b.keys()]).toContain("Doomed");
+    expect([...b.keys()]).not.toContain("Fresh");
+  });
+
+  it("drifts when the frame is not shared — the bug this prevents", () => {
+    // Without a frame each half lays itself out from its own set, and the sets
+    // differ by whatever the branch added or removed. Asserted over the whole
+    // picture rather than one node: which node moves depends on the layout, but
+    // that the pair stops agreeing is the point.
+    const b = svgOf(before);
+    const a = svgOf(after);
+    const bp = at(b);
+    const ap = at(a);
+    const shared = [...ap.keys()].filter((k) => bp.has(k));
+    const agrees = canvas(a) === canvas(b) && shared.every((k) => ap.get(k) === bp.get(k));
+    expect(agrees).toBe(false);
+
+    // ...and with the frame, the same comparison holds.
+    const bf = svgOf(before, frame);
+    const af = svgOf(after, frame);
+    const bfp = at(bf);
+    const afp = at(af);
+    expect(canvas(af)).toBe(canvas(bf));
+    for (const k of [...afp.keys()].filter((k) => bfp.has(k))) {
+      expect(afp.get(k), k).toBe(bfp.get(k));
+    }
+  });
+
+  it("changes nothing for a single render", () => {
+    expect(svgOf(before, before)).toBe(svgOf(before));
+  });
+});
+
 describe("the delta legend", () => {
   const svgOf = (g: Graph) => renderSvg(g, { layout: "grid", viewLabel: "t" });
 
