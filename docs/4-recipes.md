@@ -112,8 +112,13 @@ npx hexwright render --repo . --src server --base origin/main           --image 
 `--at base` draws the types the delta covers as they stood before the branch —
 the state your working tree no longer has once the change lands. Violations stay
 red; the delta styling is dropped, because nothing in a picture of the past can be
-added or modified. See [scenario 2](2-review.md#the-picture-that-no-longer-exists)
-for what the pair is for and where it falls short.
+added or modified.
+
+The two images line up — same coordinates, same colours, same canvas — so they can
+be flipped between as well as read side by side. Both commands work that out on
+their own; there is no flag to remember and no order to run them in. See
+[scenario 2](2-review.md#the-picture-that-no-longer-exists) for what the pair is
+for.
 
 Either half can legitimately come out empty — a branch that only adds types has
 no before state, and a branch that fixed everything has no violations left. Both

@@ -171,6 +171,16 @@ export interface RenderOptions {
   /** View description printed in the header. */
   viewLabel?: string;
   showIdentifiers?: boolean;
+  /**
+   * Lay out from this graph instead of the one being drawn. Only `g` is drawn;
+   * nodes the frame has and `g` does not reserve their space and stay blank.
+   *
+   * A before/after pair passes the union of its two halves. Coordinates, domain
+   * boxes, hues and canvas width all follow the set of types laid out, so without
+   * a shared frame the two images disagree on all four and nothing lines up.
+   * Defaults to `g`, which is a single render laying itself out.
+   */
+  frame?: Graph;
 }
 
 /**
@@ -200,24 +210,29 @@ function gridWidthFor(g: Graph): number {
 
 export function renderSvg(g: Graph, opt: RenderOptions = {}): string {
   const layout = opt.layout ?? "hex";
-  const hueOf = hueMap(g.nodes.map((n) => n.domain));
+  // Positions, hues and domain boxes come from the frame; only `g` is drawn. They
+  // are the same object unless a caller is producing a pair — see RenderOptions.
+  const frame = opt.frame ?? g;
+  const hueOf = hueMap(frame.nodes.map((n) => n.domain));
   const place =
     layout === "hex"
-      ? hexLayout(g)
+      ? hexLayout(frame)
       : layout === "organic"
-        ? organicLayout(g)
-        : gridLayout(g, gridWidthFor(g));
+        ? organicLayout(frame)
+        : gridLayout(frame, gridWidthFor(frame));
   const coords = new Map(place.map((p) => [p.id, p]));
 
-  const placed: Placed[] = g.nodes.map((n) => {
+  const sit = (n: Node): Placed => {
     const c = coords.get(n.id) ?? { x: 0, y: 0 };
     return { n, x: c.x, y: c.y, ...sizeOf(n) };
-  });
+  };
+  const placed: Placed[] = g.nodes.map(sit);
   const at = new Map(placed.map((p) => [p.n.id, p]));
 
-  // Domain boxes, sized from the actual extent of the visible nodes
+  // Domain boxes, sized from the frame rather than from what is drawn: a box that
+  // shrank around the smaller half would move every node inside it.
   const domains = new Map<string, Box>();
-  for (const p of placed) {
+  for (const p of frame === g ? placed : frame.nodes.map(sit)) {
     const b = domains.get(p.n.domain);
     const x1 = Math.min(b ? b.x : Number.POSITIVE_INFINITY, p.x - p.w / 2);
     const y1 = Math.min(b ? b.y : Number.POSITIVE_INFINITY, p.y - p.h / 2);

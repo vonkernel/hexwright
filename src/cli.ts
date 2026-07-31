@@ -4,6 +4,7 @@ import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { serveStdio } from "./mcp.ts";
 import type { Graph } from "./model.ts";
+import { edgeKey } from "./model.ts";
 import { deltaSummary, toTsv } from "./output/tsv.ts";
 import { loadProfile } from "./profile.ts";
 import type { Detected } from "./project.ts";
@@ -171,17 +172,14 @@ function main(): number {
     // as they stand in the base. The delta is computed all the same — it is what says
     // which types those are — but its annotations are left off. They are forward
     // looking, and in a picture of the past nothing can be added or modified.
-    let target = graph;
-    let changed: Set<string> | undefined;
-    if (atBase) {
-      const d = source.delta();
-      if (d) changed = new Set([...d.addedNodes, ...d.modifiedNodes, ...d.removedNodes]);
-      target = source.base();
-    }
+    const changed = d
+      ? new Set([...d.addedNodes, ...d.modifiedNodes, ...d.removedNodes])
+      : undefined;
+    const target = atBase ? source.base() : graph;
 
     let sel: Selection;
     try {
-      sel = select(target, v.view as View, v.identifiers, changed);
+      sel = select(target, v.view as View, v.identifiers, atBase ? changed : undefined);
     } catch (e) {
       // Not every empty picture is a failure — see NothingToDraw.
       if (e instanceof NothingToDraw) {
@@ -190,6 +188,34 @@ function main(): number {
       }
       process.stderr.write(`${(e as Error).message}\n`);
       return 1;
+    }
+
+    // With a base to compare against, lay out from both halves of the pair rather
+    // than from this one. Each half derives the union on its own — both hold the
+    // base graph and the head graph — so the two commands agree without being told
+    // about each other, and neither can be run "wrong" by forgetting a flag.
+    //
+    // Order is fixed at head-then-base rather than own-then-other, because the two
+    // sides must build the same frame; preferring whichever half is being drawn
+    // would give each a different one.
+    //
+    // A branch that removes nothing frames identically either way. Where it shows
+    // is a deletion, which leaves its space blank in the after image — and that gap
+    // is the point: it is where the type used to be.
+    let frame: Graph | undefined;
+    if (v.base && changed) {
+      const half = (gr: Graph, ch?: Set<string>): Graph | undefined => {
+        try {
+          return select(gr, v.view as View, v.identifiers, ch).graph;
+        } catch {
+          // The other half having nothing to draw is not a failure of this one —
+          // it means there is no pair, so this image lays itself out.
+          return undefined;
+        }
+      };
+      const head = half(graph);
+      const base = half(source.base(), changed);
+      if (head && base) frame = union(head, base);
     }
     // Delta and single-domain views want organic: domain blocks placed by coupling,
     // so entangled domains sit close and the lines stay short. core and all are
@@ -204,6 +230,7 @@ function main(): number {
       layout,
       viewLabel: sel.label,
       showIdentifiers: v.identifiers,
+      ...(frame ? { frame } : {}),
     });
     const dir = dirname(resolve(out));
     mkdirSync(dir, { recursive: true });
@@ -294,6 +321,28 @@ function main(): number {
  * SVG to PNG. GitHub does not render SVG as an image in comments, so attaching
  * to a PR needs a raster. resvg is optional; without it this quietly skips.
  */
+/**
+ * Everything either half of a before/after pair draws, as one graph to lay out from.
+ *
+ * Sorted, and biased to `a` on a collision, so both halves build a byte-identical
+ * frame. Without that the two images disagree about where a type sits, which is the
+ * whole thing this exists to prevent.
+ */
+function union(a: Graph, b: Graph): Graph {
+  const nodes = new Map(a.nodes.map((n) => [n.id, n]));
+  for (const n of b.nodes) if (!nodes.has(n.id)) nodes.set(n.id, n);
+  const edges = new Map(a.edges.map((e) => [edgeKey(e), e]));
+  for (const e of b.edges) if (!edges.has(edgeKey(e))) edges.set(edgeKey(e), e);
+  return {
+    ...a,
+    nodes: [...nodes.values()].sort((x, y) => x.id.localeCompare(y.id)),
+    edges: [...edges.values()].sort(
+      (x, y) =>
+        x.src.localeCompare(y.src) || x.dst.localeCompare(y.dst) || x.rel.localeCompare(y.rel),
+    ),
+  };
+}
+
 function toPng(svg: string, out: string): string | undefined {
   try {
     const req = createRequire(import.meta.url);
