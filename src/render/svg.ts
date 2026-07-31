@@ -457,13 +457,18 @@ function legendBlock(
     `<path d="M${x},${y} L${x + 34},${y}" stroke="${VIOLATION}" stroke-width="3.4" fill="none"/>`,
     `<text x="${x + 40}" y="${y + 4}" font-size="11" fill="${VIOLATION}">boundary violation</text>`,
   );
-  x += 150;
-  rows.push(
-    `<rect x="${x}" y="${y - 7}" width="14" height="14" rx="3" fill="none" stroke="${ADDED}" stroke-width="3"/>`,
-    `<text x="${x + 20}" y="${y + 4}" font-size="11" fill="${ADDED}">added</text>`,
-    `<rect x="${x + 66}" y="${y - 7}" width="14" height="14" rx="3" fill="none" stroke="${MODIFIED}" stroke-width="2.6" stroke-dasharray="7 4"/>`,
-    `<text x="${x + 86}" y="${y + 4}" font-size="11" fill="${MODIFIED}">modified</text>`,
-  );
+  // Only where the picture can contain them. A state view — a base-state render, or
+  // any view drawn without a base — has nothing added or modified, and a key for
+  // marks that cannot appear leaves the reader looking for them.
+  if (g.nodes.some((n) => n.status === "added" || n.status === "modified")) {
+    x += 150;
+    rows.push(
+      `<rect x="${x}" y="${y - 7}" width="14" height="14" rx="3" fill="none" stroke="${ADDED}" stroke-width="3"/>`,
+      `<text x="${x + 20}" y="${y + 4}" font-size="11" fill="${ADDED}">added</text>`,
+      `<rect x="${x + 66}" y="${y - 7}" width="14" height="14" rx="3" fill="none" stroke="${MODIFIED}" stroke-width="2.6" stroke-dasharray="7 4"/>`,
+      `<text x="${x + 86}" y="${y + 4}" font-size="11" fill="${MODIFIED}">modified</text>`,
+    );
+  }
 
   // Domain colours
   y += 26;

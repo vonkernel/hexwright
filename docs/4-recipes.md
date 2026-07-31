@@ -93,11 +93,32 @@ npx hexwright render --repo . --src server --view domain:record --image record.p
 
 # everything, adapters and DTOs included — large, for zooming into
 npx hexwright render --repo . --src server --view all --image full.svg
+
+# only the breaches, and the types they run through
+npx hexwright render --repo . --src server --view violations --image viol.png
 ```
 
-Layout follows the view: `organic` for `delta` and `domain:` (domain blocks
-placed by coupling), `hex` for `core` and `all` (concentric rings, read as a
-shape). Override with `--layout organic|grid|hex`.
+Layout follows the view: `organic` for `delta`, `domain:` and `violations`
+(domain blocks placed by coupling), `hex` for `core` and `all` (concentric rings,
+read as a shape). Override with `--layout organic|grid|hex`.
+
+## Show what a branch changed *from*
+
+```bash
+npx hexwright render --repo . --src server --base origin/main --at base --image before.png
+npx hexwright render --repo . --src server --base origin/main           --image after.png
+```
+
+`--at base` draws the types the delta covers as they stood before the branch —
+the state your working tree no longer has once the change lands. Violations stay
+red; the delta styling is dropped, because nothing in a picture of the past can be
+added or modified. See [scenario 2](2-review.md#the-picture-that-no-longer-exists)
+for what the pair is for and where it falls short.
+
+Either half can legitimately come out empty — a branch that only adds types has
+no before state, and a branch that fixed everything has no violations left. Both
+print what happened and **exit 0**, so a script that renders both halves does not
+need to special-case them.
 
 `--image x.png` always writes `x.svg` too. PNG needs the optional
 `@resvg/resvg-js`; without it the SVG is still written and the command says so.

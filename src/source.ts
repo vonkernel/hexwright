@@ -109,7 +109,11 @@ export class GraphSource {
     return this.last?.delta;
   }
 
-  private base(): Graph {
+  /**
+   * The graph as it stands at the base ref. Extracted once and cached — the ref is
+   * immutable, so a base-state render costs nothing a delta has not already paid.
+   */
+  base(): Graph {
     if (this.baseGraph) return this.baseGraph;
     const { repo, srcRel, profile, project, base } = this.cfg;
     const { dir, cleanup } = exportRef(repo, base as string, srcRel);

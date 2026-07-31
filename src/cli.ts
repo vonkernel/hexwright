@@ -9,7 +9,7 @@ import { loadProfile } from "./profile.ts";
 import type { Detected } from "./project.ts";
 import { detectSource } from "./project.ts";
 import type { Selection, View } from "./render/select.ts";
-import { select } from "./render/select.ts";
+import { NothingToDraw, select } from "./render/select.ts";
 import { renderSvg } from "./render/svg.ts";
 import { GraphSource } from "./source.ts";
 import { serveHttp } from "./view/server.ts";
@@ -43,11 +43,23 @@ check only
                        has violations without fixing them all first.
 
 render only
-  --view <v>           delta | impact | core | all | domain:<name>   [delta]
+  --view <v>           delta | impact | core | all | violations | domain:<name>
+                       [delta]
+                       violations = only the breaches and the types they run
+                       through. A state view: it draws what is wrong now, not
+                       what this branch changed.
+  --at <s>             head | base   [head]
+                       base draws the same types in their pre-branch state, for
+                       the "before" half of a before/after pair. Requires --base.
+                       Delta styling is dropped — nothing is added or modified in
+                       a picture of the past — and violations stay in red.
   --layout <l>         organic | grid | hex
-                       [organic for delta·domain, hex for core·all]
+                       [organic for delta·domain·violations, hex for core·all]
   --image <file>       output path; .svg, or .png to rasterize  [graph.svg]
   --identifiers        include identifier-only references (FamilyId·UserId)
+
+  Nothing to draw — no violations, or a branch that only adds types and so has
+  no before state — is reported on stdout and exits 0.
 `;
 
 function main(): number {
@@ -66,6 +78,7 @@ function main(): number {
       mcp: { type: "boolean", default: false },
       scope: { type: "string", default: "all" },
       view: { type: "string", default: "delta" },
+      at: { type: "string", default: "head" },
       layout: { type: "string" }, // no default — chosen to suit the view
       image: { type: "string" },
       identifiers: { type: "boolean", default: false },
@@ -144,10 +157,37 @@ function main(): number {
 
   if (cmd === "render") {
     const out = v.image ?? "graph.svg";
+    if (v.at !== "head" && v.at !== "base") {
+      process.stderr.write(`--at takes head or base, not '${v.at}'\n`);
+      return 1;
+    }
+    const atBase = v.at === "base";
+    if (atBase && !v.base) {
+      process.stderr.write("--at base needs --base <ref> to know which state to draw\n");
+      return 1;
+    }
+
+    // The before half of a before/after pair: the same types the delta covers, drawn
+    // as they stand in the base. The delta is computed all the same — it is what says
+    // which types those are — but its annotations are left off. They are forward
+    // looking, and in a picture of the past nothing can be added or modified.
+    let target = graph;
+    let changed: Set<string> | undefined;
+    if (atBase) {
+      const d = source.delta();
+      if (d) changed = new Set([...d.addedNodes, ...d.modifiedNodes, ...d.removedNodes]);
+      target = source.base();
+    }
+
     let sel: Selection;
     try {
-      sel = select(graph, v.view as View, v.identifiers);
+      sel = select(target, v.view as View, v.identifiers, changed);
     } catch (e) {
+      // Not every empty picture is a failure — see NothingToDraw.
+      if (e instanceof NothingToDraw) {
+        process.stdout.write(`${project} @ ${target.ref}\n  ${e.message}\n`);
+        return 0;
+      }
       process.stderr.write(`${(e as Error).message}\n`);
       return 1;
     }
@@ -170,7 +210,7 @@ function main(): number {
     const svgPath = out.endsWith(".png") ? `${out.slice(0, -4)}.svg` : out;
     writeFileSync(svgPath, svg);
     process.stdout.write(
-      `${project} @ ${graph.ref}\n` +
+      `${project} @ ${target.ref}\n` +
         `  view    ${sel.label}\n` +
         `  drew    ${sel.graph.nodes.length} types · ${sel.graph.edges.length} relations` +
         ` · ${sel.graph.edges.filter((e) => e.violation).length} violations\n` +
