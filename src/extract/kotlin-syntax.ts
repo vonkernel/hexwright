@@ -3,8 +3,9 @@
  * language-agnostic.
  *
  * Two things accuracy depends on:
- *  - Strip comments first. Codebases like this name types in comments often
- *    enough that leaving them in fabricates dependencies that do not exist.
+ *  - Blank out comments and string literals first. Codebases like this name types
+ *    in prose and in log lines often enough that leaving either in fabricates
+ *    dependencies that do not exist.
  *  - Multi-line signatures are joined by tracking bracket depth.
  */
 
@@ -67,50 +68,126 @@ export function structOf(kind: string): "Class" | "Interface" | "Object" {
   return "Class";
 }
 
+/** What the scanner is inside. The root frame is code and never pops. */
+interface Frame {
+  kind: "code" | "str";
+  /** for a string: a raw `"""…"""` literal, where a backslash escapes nothing */
+  raw: boolean;
+  /** for code opened by a `${`: braces seen since, so the matching `}` is known */
+  depth: number;
+}
+
 /**
- * Replace comments, block and line alike, with spaces — preserving line and
- * column positions.
- * A // inside a string literal stays.
+ * Blank out everything that is not code, preserving line and column positions.
+ *
+ * Comments go because a codebase names types in prose often enough that leaving
+ * them in fabricates dependencies that do not exist. String literals go for the
+ * same reason: a log line, an exception message or a serialization key naming a
+ * type is a mention, not a reference, and counting it reports a boundary breach
+ * against a declaration whose code never touches the type.
+ *
+ * What survives is the code inside a `${…}` template — a call there is a real
+ * call, and blanking it would lose a genuine edge. Frames nest, so a string
+ * inside a template is blanked in turn.
  */
-export function stripComments(text: string): string {
+export function stripNonCode(text: string): string {
   const out: string[] = [];
-  let inBlock = false;
-  let inLine = false;
-  let inStr = false;
-  for (let i = 0; i < text.length; i++) {
+  const n = text.length;
+  const stack: Frame[] = [{ kind: "code", raw: false, depth: 0 }];
+  const blank = (c: string) => out.push(c === "\n" ? "\n" : " ");
+  let i = 0;
+
+  while (i < n) {
+    const f = stack[stack.length - 1] as Frame;
     const c = text[i] as string;
-    if (inLine) {
-      if (c === "\n") {
-        inLine = false;
-        out.push("\n");
-      } else out.push(" ");
-      continue;
-    }
-    if (inBlock) {
-      if (c === "*" && text[i + 1] === "/") {
-        out.push("  ");
-        i++;
-        inBlock = false;
+
+    if (f.kind === "code") {
+      if (c === "/" && text[i + 1] === "/") {
+        while (i < n && text[i] !== "\n") {
+          out.push(" ");
+          i++;
+        }
         continue;
       }
-      out.push(c === "\n" ? "\n" : " ");
-      continue;
-    }
-    if (!inStr && c === "/" && text[i + 1] === "*") {
-      inBlock = true;
-      out.push("  ");
+      if (c === "/" && text[i + 1] === "*") {
+        out.push(" ", " ");
+        i += 2;
+        while (i < n && !(text[i] === "*" && text[i + 1] === "/")) blank(text[i++] as string);
+        if (i < n) {
+          out.push(" ", " ");
+          i += 2;
+        }
+        continue;
+      }
+      if (c === '"') {
+        const raw = text[i + 1] === '"' && text[i + 2] === '"';
+        const q = raw ? 3 : 1;
+        for (let k = 0; k < q; k++) out.push('"');
+        i += q;
+        stack.push({ kind: "str", raw, depth: 0 });
+        continue;
+      }
+      // A character literal cannot nest — consume it here.
+      if (c === "'") {
+        out.push("'");
+        i++;
+        while (i < n && text[i] !== "'" && text[i] !== "\n") {
+          if (text[i] === "\\" && i + 1 < n) {
+            out.push(" ");
+            i++;
+          }
+          blank(text[i++] as string);
+        }
+        if (i < n && text[i] === "'") {
+          out.push("'");
+          i++;
+        }
+        continue;
+      }
+      if (c === "{") f.depth++;
+      else if (c === "}") {
+        // The brace that closes the `${` this frame was opened by.
+        if (f.depth === 0 && stack.length > 1) {
+          out.push("}");
+          stack.pop();
+          i++;
+          continue;
+        }
+        f.depth--;
+      }
+      out.push(c);
       i++;
       continue;
     }
-    if (!inStr && c === "/" && text[i + 1] === "/") {
-      inLine = true;
-      out.push("  ");
+
+    // Inside a string literal.
+    if (!f.raw && c === "\\" && i + 1 < n) {
+      out.push(" ", " ");
+      i += 2;
+      continue;
+    }
+    if (!f.raw && c === "\n") {
+      // Do not let an unterminated string leak into the next line.
+      out.push("\n");
+      stack.pop();
       i++;
       continue;
     }
-    if (c === '"') inStr = !inStr;
-    else if (c === "\n") inStr = false; // do not let an unterminated string leak into the next line
-    out.push(c);
+    if (c === '"' && (!f.raw || (text[i + 1] === '"' && text[i + 2] === '"'))) {
+      const q = f.raw ? 3 : 1;
+      for (let k = 0; k < q; k++) out.push('"');
+      i += q;
+      stack.pop();
+      continue;
+    }
+    if (c === "$" && text[i + 1] === "{") {
+      out.push("$", "{");
+      i += 2;
+      stack.push({ kind: "code", raw: false, depth: 0 });
+      continue;
+    }
+    blank(c);
+    i++;
   }
   return out.join("");
 }

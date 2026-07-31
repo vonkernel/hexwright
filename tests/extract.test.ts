@@ -8,13 +8,15 @@ import { loadProfile } from "../src/profile.ts";
 import { BASE_PACKAGE, SRC } from "./fixture.ts";
 
 /**
- * Attribution: which declaration a reference is counted against.
+ * What counts as a reference, and which declaration it counts against.
  *
- * A declaration's body used to run to the next `class`/`interface`/`object`, so a
- * top-level construct between two declarations was read as part of the one above
- * it — reporting a boundary breach against a type that did not have one. These
- * suites pin both halves: the construct must not be misattributed, and a
- * reference that genuinely runs through a `typealias` must still be found.
+ * Both halves have produced a boundary verdict against a type whose code does not
+ * touch the entity: a top-level construct read as part of the declaration above it
+ * (#4), and a type named inside a string literal (#7).
+ *
+ * Each suite pins the fix in both directions. Removing a false positive is only an
+ * improvement if the reference that was really there is still found — through a
+ * `typealias`, or through the code inside a `${…}` template.
  */
 
 const dirs: string[] = [];
@@ -163,6 +165,93 @@ describe("a reference through a typealias is still found", () => {
         ")\n",
     });
     expect(violations(g)).toEqual(["IncidentPage -> MediaIncident: DTO exposes Entity"]);
+  });
+});
+
+describe("a type named in a string is a mention, not a reference", () => {
+  /** A Service body wrapped around whatever is under test. A Service may touch an
+   *  Entity, so the DTO below it is what any false verdict lands on. */
+  const serviceWith = (line: string): Record<string, string> => ({
+    "com/example/media/application/service/IncidentService.kt":
+      `package ${BASE_PACKAGE}.media.application.service\n\n` +
+      `import ${BASE_PACKAGE}.media.domain.model.MediaIncident\n\n` +
+      "class IncidentService {\n" +
+      `    ${line}\n` +
+      "}\n",
+  });
+
+  const mentions: [string, string][] = [
+    ["a plain string", 'fun describe() = "no MediaIncident on this page"'],
+    ["a constant", 'val tag: String = "MediaIncident"'],
+    ["an escaped quote", 'fun describe() = "say \\"MediaIncident\\" now"'],
+    ["a template with no expression", 'fun describe() = "a MediaIncident, plain"'],
+  ];
+
+  for (const [label, line] of mentions) {
+    it(`is not counted — ${label}`, () => {
+      const g = graphOf(serviceWith(line));
+      expect(deps(g, "IncidentService")).toEqual([]);
+    });
+  }
+
+  it("still counts a reference in code beside the string", () => {
+    const g = graphOf(serviceWith('fun keep(i: MediaIncident) = "MediaIncident"'));
+    expect(deps(g, "IncidentService")).toEqual(["MediaIncident"]);
+  });
+
+  it("keeps code inside a ${} template", () => {
+    // Blanking the whole literal would drop this call and lose a real edge.
+    const g = graphOf({
+      "com/example/media/application/service/IncidentService.kt":
+        `package ${BASE_PACKAGE}.media.application.service\n\n` +
+        `import ${BASE_PACKAGE}.media.application.port.out.MediaIncidentRepository\n\n` +
+        "class IncidentService(private val repo: MediaIncidentRepository) {\n" +
+        '    fun describe(id: String) = "found ${repo.findById(id)}"\n' +
+        "}\n",
+      "com/example/media/application/port/out/MediaIncidentRepository.kt":
+        `package ${BASE_PACKAGE}.media.application.port.out\n\n` +
+        `import ${BASE_PACKAGE}.media.domain.model.MediaIncident\n\n` +
+        "interface MediaIncidentRepository {\n" +
+        "    fun findById(id: String): MediaIncident?\n" +
+        "}\n",
+    });
+    // The call is found, and through its signature so is the Entity it returns.
+    expect(deps(g, "IncidentService").sort()).toEqual(["MediaIncident", "MediaIncidentRepository"]);
+  });
+
+  it("blanks a string nested inside a template", () => {
+    const g = graphOf(
+      serviceWith('fun describe(xs: List<String>) = "${xs.joinToString("MediaIncident")}"'),
+    );
+    expect(deps(g, "IncidentService")).toEqual([]);
+  });
+
+  it("blanks a raw string, and keeps its template", () => {
+    const g = graphOf({
+      "com/example/media/application/service/IncidentService.kt":
+        `package ${BASE_PACKAGE}.media.application.service\n\n` +
+        `import ${BASE_PACKAGE}.media.domain.model.MediaIncident\n\n` +
+        "class IncidentService {\n" +
+        '    fun query(i: String) = """\n' +
+        "        select * from MediaIncident\n" +
+        "        where id = ${i}\n" +
+        '    """\n' +
+        "}\n",
+    });
+    expect(deps(g, "IncidentService")).toEqual([]);
+  });
+
+  it("does not let an unterminated string swallow the next line", () => {
+    const g = graphOf({
+      "com/example/media/application/service/IncidentService.kt":
+        `package ${BASE_PACKAGE}.media.application.service\n\n` +
+        `import ${BASE_PACKAGE}.media.domain.model.MediaIncident\n\n` +
+        "class IncidentService {\n" +
+        '    val broken = "MediaIncident\n' +
+        "    fun keep(i: MediaIncident) = i\n" +
+        "}\n",
+    });
+    expect(deps(g, "IncidentService")).toEqual(["MediaIncident"]);
   });
 });
 
