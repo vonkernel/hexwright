@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -189,28 +189,34 @@ describe.skipIf(!REPO)("against an injected codebase", () => {
 
   describe("render command", () => {
     it("writes an svg and a png", async () => {
-      const dir = mkdtempSync(join(tmpdir(), "hexwright-"));
-      const png = join(dir, "delta.png");
-      const { stdout } = await promisify(execFile)("node", [
-        "src/cli.ts",
-        "render",
-        "--repo",
-        REPO as string,
-        "--src",
-        MODULE,
-        "--base",
-        BASE,
-        "--image",
-        png,
-      ]);
-      expect(stdout).toContain("what this branch added and changed");
-      const svg = readFileSync(join(dir, "delta.svg"), "utf8");
-      expect(svg.startsWith("<svg")).toBe(true);
-      // PNG is an optional dependency; when present it has to be a real image
-      if (stdout.includes("delta.png")) {
-        const bytes = readFileSync(png);
-        expect(bytes.subarray(1, 4).toString()).toBe("PNG");
-        expect(bytes.length).toBeGreaterThan(10_000);
+      // A distinct prefix: sharing "hexwright-" with exportRef's snapshots makes
+      // a leftover here look like the tool leaking, which it is not.
+      const dir = mkdtempSync(join(tmpdir(), "hexwright-rendertest-"));
+      try {
+        const png = join(dir, "delta.png");
+        const { stdout } = await promisify(execFile)("node", [
+          "src/cli.ts",
+          "render",
+          "--repo",
+          REPO as string,
+          "--src",
+          MODULE,
+          "--base",
+          BASE,
+          "--image",
+          png,
+        ]);
+        expect(stdout).toContain("what this branch added and changed");
+        const svg = readFileSync(join(dir, "delta.svg"), "utf8");
+        expect(svg.startsWith("<svg")).toBe(true);
+        // PNG is an optional dependency; when present it has to be a real image
+        if (stdout.includes("delta.png")) {
+          const bytes = readFileSync(png);
+          expect(bytes.subarray(1, 4).toString()).toBe("PNG");
+          expect(bytes.length).toBeGreaterThan(10_000);
+        }
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
       }
     }, 180_000);
   });
