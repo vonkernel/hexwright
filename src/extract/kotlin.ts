@@ -93,7 +93,7 @@ export function extractKotlin(
   for (const abs of files) {
     const rel = relative(srcRoot, abs);
     if (isExcluded(profile, `/${rel}`)) continue;
-    const lines = K.stripComments(readFileSync(abs, "utf8")).split("\n");
+    const lines = K.stripNonCode(readFileSync(abs, "utf8")).split("\n");
     let pkg = "";
     const imports = new Map<string, string>();
     const decls: Decl[] = [];
