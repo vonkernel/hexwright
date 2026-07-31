@@ -375,6 +375,29 @@ is a violation:
 - a DTO or UseCase exposing an Entity — domain model leaked into a contract
 - application/domain referencing adapter — layer back-reference
 
+## Releasing
+
+Trunk-based, tag-triggered. There is no release branch: `main` is the only branch
+that ships, and one can always be cut from a tag later if a backport ever needs
+one.
+
+```bash
+npm version minor -m "release: v%s"   # bumps package.json, commits, tags
+git push --follow-tags
+```
+
+Pushing the tag runs [`release.yml`](.github/workflows/release.yml), which
+refuses to publish unless the tagged commit is on `main` and the tag matches the
+version in `package.json` — a tag that disagrees with what npm receives is worse
+than a failed release, because it is only found out later. It then runs the same
+gate a pull request has to clear, publishes with provenance, and opens a GitHub
+Release for the tag.
+
+It needs one secret: `NPM_TOKEN`, an npm granular access token with publish
+rights on `hexwright`. Without it the publish step fails and nothing else is
+affected — the tag stays, and re-pushing it after adding the secret re-runs the
+release.
+
 ## Status
 
 Early. Kotlin extractor only; validated against one production codebase
