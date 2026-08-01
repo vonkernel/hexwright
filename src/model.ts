@@ -23,7 +23,12 @@ export type Component =
  * inbound may not. */
 export type AdapterKind = "in" | "out" | "event" | "";
 
-export type Relation = "IMPLEMENTS" | "EXTENDS" | "DEPENDS_ON";
+/**
+ * REFERENCES is a dependency held through an identifier rather than on the type —
+ * `MediaItem` keeps a `BlobId`, not a `Blob`. Deliberately weaker coupling, and
+ * drawing it as DEPENDS_ON would erase the distinction the pattern exists to make.
+ */
+export type Relation = "IMPLEMENTS" | "EXTENDS" | "DEPENDS_ON" | "REFERENCES";
 
 /** Status within a branch delta. */
 export type Status = "existing" | "added" | "modified" | "removed";

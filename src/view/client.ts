@@ -227,6 +227,20 @@ function buildCy(): void {
         },
       },
       {
+        // Lighter than DEPENDS_ON: the coupling runs through an identifier.
+        selector: 'edge[rel="REFERENCES"]',
+        style: {
+          "line-style": "dashed",
+          "line-dash-pattern": [2, 4],
+          width: 1.4,
+          "curve-style": "unbundled-bezier",
+          "control-point-distances": [24],
+          "control-point-weights": [0.5],
+          "target-arrow-shape": "vee",
+          "arrow-scale": 0.9,
+        },
+      },
+      {
         selector: 'edge[rel="IMPLEMENTS"]',
         style: {
           "line-style": "dashed",
@@ -392,7 +406,7 @@ function status(): void {
   $("stat").innerHTML =
     `Nodes <b>${vn}</b>/${cy.nodes('[kind="type"]').length} · Edges <b>${ve}</b>/${cy.edges().length}`;
   $("cviol").textContent = String(nv);
-  for (const r of ["DEPENDS_ON", "IMPLEMENTS", "EXTENDS"]) {
+  for (const r of ["DEPENDS_ON", "REFERENCES", "IMPLEMENTS", "EXTENDS"]) {
     const el = document.getElementById(`c${r}`);
     if (el) el.textContent = String(cy.edges(`[rel="${r}"]`).filter((e) => on(e)).length);
   }

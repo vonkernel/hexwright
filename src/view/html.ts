@@ -79,7 +79,7 @@ export const shell = (): string => `<!doctype html>
   Off = keep the fixed coordinates above.</div></div>
 
  <h2>Edges</h2>
- <label><input type=checkbox id="showId">Show identifier edges</label>
+ <label><input type=checkbox id="showId">Show value-type edges</label>
  <label><input type=checkbox id="crossOnly">Cross-domain edges only</label>
  <div class="sub" style="margin:6px 0 0"><b>Identifier edges</b><div class="d">references like
   FamilyId·UserId — a shared coordinate system, not coupling. Hidden by default.</div></div>
@@ -87,6 +87,8 @@ export const shell = (): string => `<!doctype html>
  <h2>Edge types</h2>
  <label><input type=checkbox class=rf value="DEPENDS_ON" checked>
   <i></i>DEPENDS_ON <span class="mut">straight · open V</span><span class="n" id="cDEPENDS_ON"></span></label>
+ <label><input type=checkbox class=rf value="REFERENCES" checked>
+  <i class="d"></i>REFERENCES <span class="mut">by id · fine dots</span><span class="n" id="cREFERENCES"></span></label>
  <label><input type=checkbox class=rf value="IMPLEMENTS" checked>
   <i class="d"></i>IMPLEMENTS <span class="mut">curved · long dash</span><span class="n" id="cIMPLEMENTS"></span></label>
  <label><input type=checkbox class=rf value="EXTENDS" checked>

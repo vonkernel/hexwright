@@ -244,9 +244,8 @@ export function collectSigs(body: string[]): Map<string, Signature> {
   return out;
 }
 
-/** Constructor parameters in the declaration header — where a data class or
- * exception keeps its contract. */
-export function ctorParams(header: string): string[] {
+/** The parameter list of a declaration header, split on top-level commas. */
+function ctorParts(header: string): string[] {
   const i = header.indexOf("(");
   if (i < 0) return [];
   let depth = 0;
@@ -272,6 +271,34 @@ export function ctorParams(header: string): string[] {
     } else cur.push(ch);
   }
   parts.push(cur.join(""));
+  return parts;
+}
+
+/**
+ * Constructor parameters that declare a property — the ones written `val` or `var`.
+ *
+ * A bare parameter is a pass-through to a supertype's constructor and declares
+ * nothing. Treating the two alike makes every subtype look like it owns its
+ * parent's identifier: `Photo(id: MediaId, …) : MediaItem(id, …)` would claim
+ * `MediaId` just as loudly as the `MediaItem(val id: MediaId, …)` that has it.
+ */
+export function ctorDeclared(header: string): { name: string; type: string }[] {
+  const out: { name: string; type: string }[] = [];
+  for (let p of ctorParts(header)) {
+    p = (p.split("=")[0] ?? "").replace(/\s+/g, " ").trim();
+    p = p.replace(/^(?:@\w+(?:\([^)]*\))?\s*)*/, "");
+    const m = /^(?:private |internal |protected |override )*(?:val|var)\s+(\w+)\s*:\s*(.+)$/.exec(
+      p,
+    );
+    if (m) out.push({ name: m[1] as string, type: (m[2] as string).trim() });
+  }
+  return out;
+}
+
+/** Constructor parameters in the declaration header — where a data class or
+ * exception keeps its contract. */
+export function ctorParams(header: string): string[] {
+  const parts = ctorParts(header);
   const res: string[] = [];
   for (let p of parts) {
     p = (p.split("=")[0] ?? "").replace(/\s+/g, " ").trim();

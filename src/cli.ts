@@ -57,7 +57,11 @@ render only
   --layout <l>         organic | grid | hex
                        [organic for delta·domain·violations, hex for core·all]
   --image <file>       output path; .svg, or .png to rasterize  [graph.svg]
-  --identifiers        include identifier-only references (FamilyId·UserId)
+  --identifiers        include references to domain value types — value objects,
+                       enums, and identifiers whose aggregate is out of scope.
+                       A resolved identifier is drawn as REFERENCES at the
+                       aggregate instead and is not folded away. Flag name kept
+                       for compatibility.
 
   Nothing to draw — no violations, or a branch that only adds types and so has
   no before state — is reported on stdout and exits 0.

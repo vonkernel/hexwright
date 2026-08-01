@@ -53,6 +53,12 @@ function bodyEnd(fi: FileInfo, di: number): number {
 interface TypeInfo extends Node {
   struct: string;
   sigs: Map<string, K.Signature>;
+  /**
+   * Properties this type actually declares, name to type as written. Distinct from
+   * `props`, which also carries constructor parameters that only pass through to a
+   * supertype — a difference that decides which type owns an identifier.
+   */
+  declared: Map<string, string>;
 }
 
 function walk(dir: string, out: string[] = []): string[] {
@@ -224,6 +230,8 @@ export function extractKotlin(
       const braceAt = headerFull.indexOf("{");
       const header = braceAt >= 0 ? headerFull.slice(0, braceAt) : headerFull;
       const props = K.ctorParams(header);
+      const declared = new Map<string, string>();
+      for (const p of K.ctorDeclared(header)) declared.set(p.name, p.type);
       // Scan body properties from after the header. With a multi-line primary
       // constructor those lines are in the body too, and val parameters would
       // otherwise be counted twice.
@@ -233,7 +241,11 @@ export function extractKotlin(
         if (first !== undefined) rest[0] = first.slice(first.indexOf("{") + 1);
         for (const ln of rest) {
           const pm = K.PROP.exec(ln);
-          if (pm) props.push(`${pm[1]}: ${(pm[2] as string).trim().replace(/,$/, "")}`);
+          if (!pm) continue;
+          const type = (pm[2] as string).trim().replace(/,$/, "");
+          props.push(`${pm[1]}: ${type}`);
+          // PROP only matches val/var, so a body property is always a declaration.
+          declared.set(pm[1] as string, type);
         }
       }
       if (d.kind.includes("enum")) props.push(...K.enumEntries(body.join("\n")));
@@ -254,6 +266,7 @@ export function extractKotlin(
         line: d.line + 1,
         struct,
         sigs,
+        declared,
       });
       byPkg.set(fi.pkg, [...(byPkg.get(fi.pkg) ?? []), id]);
     }
@@ -383,8 +396,66 @@ export function extractKotlin(
     }
   }
 
-  // -- 6) assemble -----------------------------------------------------
+  // -- 6) which aggregate each identifier identifies ---------------------
+  // A type holding another aggregate's id references that aggregate. Nothing in
+  // the source states the tie, so the profile says which convention to read; with
+  // no `identity` block nothing resolves and the graph is what it always was.
   const supSet = new Set(supers.map(([c, p]) => key(c, p)));
+  const parentsOf = new Map<string, string[]>();
+  for (const [c, p] of supers) parentsOf.set(c, [...(parentsOf.get(c) ?? []), p]);
+  const inherits = (child: string, ancestor: string): boolean => {
+    const seen = new Set<string>();
+    const walk = [child];
+    while (walk.length) {
+      const cur = walk.pop() as string;
+      if (cur === ancestor && cur !== child) return true;
+      if (seen.has(cur)) continue;
+      seen.add(cur);
+      walk.push(...(parentsOf.get(cur) ?? []));
+    }
+    return false;
+  };
+
+  /** id node id to the aggregate it identifies. */
+  const aggregateOf = new Map<string, string>();
+  const ambiguous: string[] = [];
+  const identity = profile.identity;
+
+  if (identity?.from === "property") {
+    const want = identity.property ?? "id";
+    // Collect every type declaring a property of that name, grouped by its type.
+    const claims = new Map<string, string[]>();
+    for (const [id, t] of types) {
+      const written = t.declared.get(want);
+      if (written === undefined) continue;
+      // `MediaId?` and `MediaId` are the same identity; anything shaped otherwise
+      // (a list, a map) is not one and is left alone.
+      const bare = written.replace(/[?\s]/g, "");
+      const target = (visCache.get(t.file) ?? new Map()).get(bare);
+      if (target) claims.set(target, [...(claims.get(target) ?? []), id]);
+    }
+    for (const [idType, holders] of claims) {
+      // A subtype re-declaring `override val id` claims the same identifier as the
+      // root that owns it. The root is the aggregate; the subtype is one of its forms.
+      const roots = holders.filter((h) => !holders.some((o) => o !== h && inherits(h, o)));
+      if (roots.length === 1) aggregateOf.set(idType, roots[0] as string);
+      else ambiguous.push(idType);
+    }
+  } else if (identity?.from === "suffix") {
+    const suffix = identity.suffix ?? "Id";
+    for (const [id, t] of types) {
+      if (!t.name.endsWith(suffix) || t.name === suffix) continue;
+      const stem = t.name.slice(0, -suffix.length);
+      const pkg = id.slice(0, id.length - t.name.length - 1);
+      const here = (byPkg.get(pkg) ?? []).filter((x) => types.get(x)?.name === stem);
+      const anywhere = [...types.values()].filter((x) => x.name === stem).map((x) => x.id);
+      const hit = here.length === 1 ? here : anywhere;
+      if (hit.length === 1) aggregateOf.set(id, hit[0] as string);
+      else if (hit.length > 1) ambiguous.push(id);
+    }
+  }
+
+  // -- 7) assemble -----------------------------------------------------
   const edges: Edge[] = [];
 
   const push = (src: string, dst: string, rel: Relation, weight: number) => {
@@ -402,10 +473,18 @@ export function extractKotlin(
       rel,
       weight,
       crossDomain: s.domain !== d.domain,
+      // Not "this edge is an identifier reference" — those became REFERENCES and
+      // point at the aggregate. This says the destination is a value type in the
+      // domain model, which nearly everything touches, so the picture folds them
+      // away by default. What lands here is value objects, enums, and identifiers
+      // whose aggregate is outside the analysed source.
       identifierOnly: d.component === "VO" && d.sublayer === "model",
       viaSignature: viaSig.has(k),
       contracts: rel === "DEPENDS_ON" ? contracts : [],
-      violation: violationOf(profile, s, d, layerViol.has(k)),
+      // Referencing another context's aggregate by id is how you avoid coupling to
+      // it. Reporting that as a breach would penalise the design that got it right,
+      // so REFERENCES carries no verdict — `crossDomain` still marks where it runs.
+      violation: rel === "REFERENCES" ? "" : violationOf(profile, s, d, layerViol.has(k)),
     });
   };
 
@@ -415,10 +494,40 @@ export function extractKotlin(
     const parent = types.get(p) as TypeInfo;
     push(c, p, parent.struct === "Interface" ? "IMPLEMENTS" : "EXTENDS", 1);
   }
+  // An edge into an identifier is rewritten to point at what it identifies. Edges
+  // out of one are left alone — `BlobId -> IdGenerator`, from that value class's own
+  // factory, is an ordinary dependency.
+  const refs = new Map<string, number>();
   for (const [k, w] of dep) {
     if (supSet.has(k)) continue; // already expressed as IMPLEMENTS/EXTENDS
     const [s, d] = k.split("\u0000") as [string, string];
-    push(s, d, "DEPENDS_ON", w);
+    const g = aggregateOf.get(d);
+    if (g === undefined) {
+      push(s, d, "DEPENDS_ON", w);
+      continue;
+    }
+    // Holding your own identifier is identity, not a reference — and a subtype
+    // holding the one its root owns says the same thing through inheritance, which
+    // EXTENDS already draws.
+    if (g === s || inherits(s, g)) continue;
+    // A direct dependency subsumes the id reference; two lines would state one fact.
+    if (dep.has(key(s, g))) continue;
+    const rk = key(s, g);
+    refs.set(rk, (refs.get(rk) ?? 0) + w);
+  }
+  for (const [k, w] of refs) {
+    const [s, d] = k.split("\u0000") as [string, string];
+    push(s, d, "REFERENCES", w);
+  }
+  if (ambiguous.length) {
+    // Two unrelated types claiming one identifier has no answer in the source. Say
+    // so rather than pick, which would point an arrow at the wrong aggregate.
+    process.stderr.write(
+      `warning: cannot tell what these identifiers identify — ${ambiguous
+        .map((x) => x.split(".").pop())
+        .sort()
+        .join(", ")}\n`,
+    );
   }
 
   const nodes: Node[] = [...types.values()].map(({ struct: _s, sigs: _g, ...n }) => n);
