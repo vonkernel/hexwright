@@ -197,8 +197,10 @@ Three things carry meaning, and they are independent of each other:
 - **Shape is the component.** Entity is a barrel, Service a rectangle, Port a
   cut-rectangle, Event a rhomboid, DTO a dashed outline.
 - **Line style is the relation.** `DEPENDS_ON` is straight with an open V,
-  `IMPLEMENTS` is a long-dashed curve with a hollow triangle, `EXTENDS` a
-  short-dashed one.
+  `REFERENCES` a finely dotted curve, `IMPLEMENTS` a long-dashed curve with a
+  hollow triangle, `EXTENDS` a short-dashed one. `REFERENCES` is drawn lightest
+  on purpose — it is a dependency held through an identifier rather than on the
+  type, which is the weaker coupling by design.
 
 Coordinates are deterministic — the same graph always draws the same file — so
 re-rendering a branch is stable and nothing drifts between runs. They follow the

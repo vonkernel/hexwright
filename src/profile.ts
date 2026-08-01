@@ -14,10 +14,40 @@ export interface ComponentRule {
   as: Component;
 }
 
+/**
+ * How an identifier type is tied to the aggregate it identifies.
+ *
+ * A type holding another aggregate's id references that aggregate — that is the
+ * point of the pattern, and it is a weaker coupling than holding the aggregate
+ * itself. The graph should say so, which means knowing which id belongs to what.
+ *
+ * Nothing in the source states that tie, so it is read from whichever convention
+ * the project follows and declared here rather than guessed. Absent, no identifier
+ * is resolved and the graph is unchanged.
+ */
+export interface IdentityRule {
+  /**
+   * `property` — the type declaring a property of the configured name owns the id.
+   * Structural, and the only one that survives an aggregate whose name is not the
+   * identifier's stem: `MediaId` identifies `MediaItem`, not `Media`.
+   *
+   * `suffix` — strip the suffix from the identifier's name and look for that type.
+   * Simpler, and works when an aggregate does not carry its own id, but silently
+   * resolves nothing the moment the two names diverge.
+   */
+  from: "property" | "suffix";
+  /** for `property` — the property name that marks a type's own identity. */
+  property?: string;
+  /** for `suffix` — the identifier suffix to strip. */
+  suffix?: string;
+}
+
 export interface Profile {
   name: string;
   language: string;
   domain: { from: string; base: string; at: number };
+  /** Omitted: identifiers stay unresolved and no REFERENCES edge is produced. */
+  identity?: IdentityRule;
   exclude: string[];
   layers: Record<string, string>;
   sublayers: Record<string, string>;

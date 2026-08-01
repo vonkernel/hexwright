@@ -145,6 +145,10 @@ interface EdgeStyle {
 
 const EDGE: Record<string, EdgeStyle> = {
   DEPENDS_ON: { width: 1.9, dash: "", bow: 0, arrow: "vee", scale: 0.95 },
+  // Thinner and broken up than DEPENDS_ON, because it is a lighter coupling: the
+  // reference runs through an identifier, not the type. The distinction is only
+  // worth drawing if it reads as weaker at a glance.
+  REFERENCES: { width: 1.4, dash: "2 4", bow: 24, arrow: "vee", scale: 0.9 },
   IMPLEMENTS: { width: 2.2, dash: "9 5", bow: 42, arrow: "triangle", scale: 1.35 },
   EXTENDS: { width: 3.4, dash: "3 3", bow: 58, arrow: "triangle", scale: 1.6 },
 };

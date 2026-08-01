@@ -364,6 +364,39 @@ domains 16
 Zero Ports or a domain count of 1 means the paths or the base package are not
 matching your layout yet.
 
+## Identity
+
+A type keeping another aggregate's id — `MediaItem` holding a `BlobId`, not a
+`Blob` — is referencing that aggregate, and referencing it the deliberately weaker
+way. That is drawn as `REFERENCES`, pointed at the aggregate rather than at the id,
+and styled lighter than a direct dependency so the two do not read alike. It never
+counts as a boundary violation: pointing at another context by id is how you avoid
+coupling to it, and reporting it would penalise the design that got it right.
+
+Nothing in the source says which id belongs to what, so the profile says which
+convention to read:
+
+```yaml
+identity:
+  from: property        # the type declaring `val id: T` owns T
+  property: id
+```
+
+```yaml
+identity:
+  from: suffix          # BlobId → Blob
+  suffix: Id
+```
+
+`property` is the default because it is structural, and because it survives an
+aggregate whose name is not the identifier's stem — `MediaId` identifies
+`MediaItem`, and stripping the suffix would look for a `Media` that does not
+exist. Use `suffix` when aggregates do not carry their own id.
+
+Where an identifier cannot be resolved — its aggregate is outside the analysed
+source, or two unrelated types claim it — the edge stays on the identifier rather
+than being pointed at a guess. Remove the `identity` block and none are resolved.
+
 ## Boundary rules
 
 An Entity may be touched by, within the same domain: `Service`, `Port`, `Entity`,

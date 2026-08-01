@@ -61,10 +61,21 @@ Two switches answer most boundary questions.
 **Cross-domain edges only** hides everything internal, leaving just the traffic
 between bounded contexts. This is the interface map of the system.
 
-**Show identifier edges** is off by default and worth understanding. References
-to `FamilyId` or `UserId` are a shared coordinate system, not coupling — nearly
-every type touches them, and leaving them on makes the graph a hairball. Turn
-them on only when you are specifically asking who speaks a given identifier.
+**REFERENCES** is a dependency held through an identifier. A type keeping a
+`BlobId` rather than a `Blob` is pointing at that aggregate, and pointing at it
+the deliberately weaker way — no object graph to traverse, no shared transaction.
+The edge is drawn at the aggregate, not at the id, and drawn lighter than a
+direct dependency, so the two read differently at a glance. Turn it off to see
+only what a type reaches for directly.
+
+Which id belongs to which aggregate is a project convention, so the profile says
+how to read it — see [Identity](../README.md#identity).
+
+**Show value-type edges** is off by default. What is left under it once
+identifiers resolve is references to the value objects and enums a domain model
+is made of — `MediaLocation`, `ProcessingStatus` — plus identifiers whose
+aggregate is outside the analysed source. Nearly every type touches those, and
+leaving them on makes the graph a hairball.
 
 **Violations only** keeps just the nodes and edges a violation runs through. It
 combines with the filters above rather than overriding them — so if the default
