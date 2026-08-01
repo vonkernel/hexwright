@@ -255,6 +255,107 @@ describe("a type named in a string is a mention, not a reference", () => {
   });
 });
 
+describe("a companion object's references are not the enclosing type's", () => {
+  /** The shape from the report: a sealed root whose companion builds its variants. */
+  const SEALED =
+    `package ${BASE_PACKAGE}.media.domain.model\n\n` +
+    "sealed class MediaItem(val id: String) {\n" +
+    "    companion object {\n" +
+    "        fun photo(id: String): Photo = Photo(id)\n" +
+    "        fun video(id: String): Video = Video(id)\n" +
+    "    }\n" +
+    "}\n\n" +
+    "class Photo(id: String) : MediaItem(id)\n\n" +
+    "class Video(id: String) : MediaItem(id)\n";
+
+  it("does not make a supertype depend on its own subtype", () => {
+    // The dependency direction of an inheritance relationship is defined: the
+    // subtype knows the supertype. A supertype depending on its subtype is not a
+    // statement object-oriented design has a meaning for.
+    const g = graphOf({ "com/example/media/domain/model/MediaItem.kt": SEALED });
+    expect(deps(g, "MediaItem")).toEqual([]);
+    expect(g.edges.map((e) => `${e.src.split(".").pop()} ${e.rel}`).sort()).toEqual([
+      "Photo EXTENDS",
+      "Video EXTENDS",
+    ]);
+  });
+
+  it("keeps the same reference when it is an ordinary member", () => {
+    // The discriminator is "inside the companion", not "is a subtype" — an instance
+    // method returning Video really is a dependency of MediaItem.
+    const g = graphOf({
+      "com/example/media/domain/model/MediaItem.kt":
+        `package ${BASE_PACKAGE}.media.domain.model\n\n` +
+        "sealed class MediaItem(val id: String) {\n" +
+        "    fun asVideo(): Video = Video(id)\n" +
+        "}\n\n" +
+        "class Video(id: String) : MediaItem(id)\n",
+    });
+    expect(deps(g, "MediaItem")).toEqual(["Video"]);
+  });
+
+  it("does not attribute a companion factory's collaborators to a value class", () => {
+    const g = graphOf({
+      "com/example/media/domain/model/MediaId.kt":
+        `package ${BASE_PACKAGE}.media.domain.model\n\n` +
+        `import ${BASE_PACKAGE}.common.IdGenerator\n\n` +
+        "@JvmInline\nvalue class MediaId(val value: String) {\n" +
+        "    companion object {\n" +
+        "        fun new(): MediaId = MediaId(IdGenerator.newId())\n" +
+        "    }\n" +
+        "}\n",
+      "com/example/common/IdGenerator.kt": `package ${BASE_PACKAGE}.common\n\nobject IdGenerator {\n    fun newId(): String = ""\n}\n`,
+    });
+    // A value class wrapping a String has no knowledge of an id generator.
+    expect(deps(g, "MediaId")).toEqual([]);
+  });
+
+  it("keeps the enclosing type's own members", () => {
+    const g = graphOf({
+      "com/example/media/application/service/IncidentService.kt":
+        `package ${BASE_PACKAGE}.media.application.service\n\n` +
+        `import ${BASE_PACKAGE}.media.domain.model.MediaIncident\n\n` +
+        "class IncidentService {\n" +
+        "    fun keep(i: MediaIncident) = i\n" +
+        "    companion object {\n" +
+        '        const val TAG: String = "x"\n' +
+        "    }\n" +
+        "    fun alsoKeep(i: MediaIncident) = i\n" +
+        "}\n",
+    });
+    // The companion sits between two members; blanking it must not take them too.
+    expect(deps(g, "IncidentService")).toEqual(["MediaIncident"]);
+    expect(g.nodes.find((n) => n.name === "IncidentService")?.api.sort()).toEqual([
+      "alsoKeep(i: MediaIncident)",
+      "keep(i: MediaIncident)",
+    ]);
+  });
+
+  it("handles a companion with a supertype and one with no body", () => {
+    const g = graphOf({
+      "com/example/media/application/service/Thing.kt":
+        `package ${BASE_PACKAGE}.media.application.service\n\n` +
+        `import ${BASE_PACKAGE}.media.domain.model.MediaIncident\n\n` +
+        "class Thing {\n" +
+        "    companion object : Marker {\n" +
+        "        fun make(): MediaIncident? = null\n" +
+        "    }\n" +
+        '    fun own(): String = ""\n' +
+        "}\n\n" +
+        "interface Marker\n\n" +
+        "class Bare {\n" +
+        "    companion object\n" +
+        "    fun own(i: MediaIncident) = i\n" +
+        "}\n",
+    });
+    // A companion implementing an interface used to surface as the class depending
+    // on it; neither the supertype nor the factory's return type is Thing's.
+    expect(deps(g, "Thing")).toEqual([]);
+    // A bodyless companion must not swallow the rest of the class.
+    expect(deps(g, "Bare")).toEqual(["MediaIncident"]);
+  });
+});
+
 describe("`fun interface` is a declaration, not a file-level function", () => {
   it("becomes a node and keeps its own body", () => {
     const g = graphOf({

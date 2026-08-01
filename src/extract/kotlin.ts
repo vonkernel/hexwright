@@ -49,6 +49,61 @@ function bodyEnd(fi: FileInfo, di: number): number {
   return end;
 }
 
+const COMPANION = /^\s+(?:public |internal |private |protected )*companion\s+object\b/;
+
+/**
+ * A declaration's body, with any companion object blanked out.
+ *
+ * A companion is a separate object with its own type. What it names belongs to it,
+ * not to the class it happens to be written inside — reading the two as one made a
+ * sealed root look like it depended on its own variants, because the factory that
+ * names them lives in the companion, and made a value class holding nothing but a
+ * UUID look like it depended on an id generator.
+ *
+ * This graph models types and a companion is not one, so its internals are out of
+ * scope rather than attributed to the nearest type. The cost is that a coupling
+ * existing only inside a companion — a domain entity whose companion maps from a
+ * persistence row, say — is no longer reported.
+ *
+ * Blanked rather than removed so every line index still lines up.
+ */
+function bodyOf(fi: FileInfo, di: number): string[] {
+  const d = fi.decls[di] as Decl;
+  const lines = fi.lines.slice(d.line, bodyEnd(fi, di));
+  for (let i = 0; i < lines.length; i++) {
+    if (!COMPANION.test(lines[i] as string)) continue;
+    // Settle where the body opens before blanking anything. A companion may be
+    // declared with none at all, and guessing forward would eat the member after it.
+    let open = (lines[i] as string).includes("{") ? i : -1;
+    if (open < 0) {
+      for (let k = i + 1; k < lines.length; k++) {
+        const t = (lines[k] as string).trim();
+        if (!t) continue;
+        if (t.startsWith("{")) open = k;
+        break; // the first thing that follows decides; nothing else can
+      }
+    }
+    if (open < 0) {
+      lines[i] = "";
+      continue;
+    }
+    let depth = 0;
+    let j = i;
+    for (; j < lines.length; j++) {
+      if (j >= open) {
+        for (const ch of lines[j] as string) {
+          if (ch === "{") depth++;
+          else if (ch === "}") depth--;
+        }
+      }
+      lines[j] = "";
+      if (j >= open && depth <= 0) break;
+    }
+    i = j;
+  }
+  return lines;
+}
+
 /** One parsed type plus its signatures — used to find edges, not carried in the graph. */
 interface TypeInfo extends Node {
   struct: string;
@@ -218,8 +273,7 @@ export function extractKotlin(
 
     for (let di = 0; di < fi.decls.length; di++) {
       const d = fi.decls[di] as Decl;
-      const end = bodyEnd(fi, di);
-      const body = fi.lines.slice(d.line, end);
+      const body = bodyOf(fi, di);
       const struct = K.structOf(d.kind);
       const sigs = K.collectSigs(body);
 
@@ -297,8 +351,7 @@ export function extractKotlin(
     for (let di = 0; di < fi.decls.length; di++) {
       const d = fi.decls[di] as Decl;
       const id = `${fi.pkg}.${d.name}`;
-      const end = bodyEnd(fi, di);
-      const body = fi.lines.slice(d.line, end).join("\n");
+      const body = bodyOf(fi, di).join("\n");
 
       for (const sup of K.parseSupertypes(fi.lines, d.line)) {
         const tgt = visible.get(sup);
@@ -353,8 +406,7 @@ export function extractKotlin(
     for (let di = 0; di < fi.decls.length; di++) {
       const d = fi.decls[di] as Decl;
       const id = `${fi.pkg}.${d.name}`;
-      const end = bodyEnd(fi, di);
-      const body = fi.lines.slice(d.line, end).join("\n");
+      const body = bodyOf(fi, di).join("\n");
 
       // variable to type: start from explicit declarations, propagate through call returns.
       const bind = new Map<string, string>();

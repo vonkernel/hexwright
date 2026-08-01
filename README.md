@@ -228,6 +228,22 @@ package prefix, which is inferred automatically:
 <base>.common                              Shared
 ```
 
+### What a companion object contributes
+
+Nothing. A `companion object` is a separate object with its own type, so what it
+names belongs to it rather than to the class it is written inside. The graph
+models types, and a companion is not one.
+
+Attributing its contents to the enclosing class is what made a sealed root appear
+to depend on its own variants — the factory naming them lives in the companion —
+and made a value class wrapping a `UUID` appear to depend on an id generator.
+
+The cost is deliberate and worth knowing: **a coupling that exists only inside a
+companion is not reported.** A domain entity whose companion holds
+`fun fromRow(row: JpaRow)` would otherwise be caught as a layer back-reference.
+Mapping belongs in the adapter in this architecture, so it should be rare, but it
+is not impossible.
+
 ## What it produces
 
 ```

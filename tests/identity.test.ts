@@ -162,14 +162,13 @@ describe("edges that must not become a reference", () => {
       [`${MODEL}Blob.kt`]:
         `package ${BASE_PACKAGE}.media.domain.model\n\n` +
         "@JvmInline\nvalue class BlobId(val value: String) {\n" +
-        "    companion object {\n" +
-        "        fun new(): BlobId = BlobId(Keys.next())\n" +
-        "    }\n" +
+        "    fun render(f: Keys): String = f.format(value)\n" +
         "}\n\n" +
-        'object Keys {\n    fun next(): String = ""\n}\n\n' +
+        "class Keys {\n    fun format(v: String): String = v\n}\n\n" +
         "class Blob private constructor(val id: BlobId)\n",
     });
-    // Only edges *into* an identifier are rewritten.
+    // Only edges *into* an identifier are rewritten. Kept on a member rather than a
+    // companion, since a companion's references are not the type's at all (#16).
     expect(edges(g)).toContain("BlobId -DEPENDS_ON-> Keys");
   });
 });
