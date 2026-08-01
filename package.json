@@ -1,6 +1,6 @@
 {
   "name": "hexwright",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Design graph for hexagonal-architecture codebases. Renders what a branch changed as one picture a human can confirm at a glance, and gives a coding agent boundary verdicts it can run on itself before asking for review.",
   "keywords": [
     "hexagonal-architecture",
