@@ -40,6 +40,7 @@ const edge = (src: string, dst: string, over: Partial<Edge> = {}): Edge => ({
   identifierOnly: false,
   viaSignature: false,
   contracts: [],
+  calls: [],
   violation: "",
   ...over,
 });

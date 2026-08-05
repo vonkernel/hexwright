@@ -398,6 +398,8 @@ export function extractKotlin(
 
   const viaSig = new Set<string>();
   const usedContracts = new Map<string, Set<string>>();
+  /** edge key -> caller method name -> the target's methods it calls */
+  const callSites = new Map<string, Map<string, Set<string>>>();
 
   for (const fi of infos) {
     if (!analyzed.has(fi.layer)) continue;
@@ -406,9 +408,12 @@ export function extractKotlin(
     for (let di = 0; di < fi.decls.length; di++) {
       const d = fi.decls[di] as Decl;
       const id = `${fi.pkg}.${d.name}`;
-      const body = bodyOf(fi, di).join("\n");
+      const lines = bodyOf(fi, di);
+      const body = lines.join("\n");
 
       // variable to type: start from explicit declarations, propagate through call returns.
+      // Whole-body on purpose: a constructor-injected property is visible to every
+      // method, so splitting this would lose the binding the calls depend on.
       const bind = new Map<string, string>();
       for (const m of body.matchAll(K.FIELD)) {
         const tgt = visible.get(m[2] as string);
@@ -429,19 +434,27 @@ export function extractKotlin(
         }
       }
 
-      for (const m of body.matchAll(K.CALL)) {
-        const owner = bind.get(m[1] as string);
-        if (!owner) continue;
-        const sg = sigTypes.get(owner)?.get(m[2] as string);
-        if (!sg) continue;
-        const ck = key(id, owner);
-        usedContracts.set(ck, (usedContracts.get(ck) ?? new Set()).add(m[2] as string));
-        for (const tgt of new Set([...sg[0], ...sg[1]])) {
-          if (tgt === id) continue;
-          const k = key(id, tgt);
-          if (!dep.has(k)) {
-            dep.set(k, 1);
-            viaSig.add(k);
+      // Per method, so an edge can say which one reaches across. The regions cover
+      // the whole body, so the union is what a single pass over it would have found.
+      for (const region of K.methodRegions(lines)) {
+        for (const m of region.lines.join("\n").matchAll(K.CALL)) {
+          const owner = bind.get(m[1] as string);
+          if (!owner) continue;
+          const called = m[2] as string;
+          const sg = sigTypes.get(owner)?.get(called);
+          if (!sg) continue;
+          const ck = key(id, owner);
+          usedContracts.set(ck, (usedContracts.get(ck) ?? new Set()).add(called));
+          const byCaller = callSites.get(ck) ?? new Map<string, Set<string>>();
+          byCaller.set(region.from, (byCaller.get(region.from) ?? new Set()).add(called));
+          callSites.set(ck, byCaller);
+          for (const tgt of new Set([...sg[0], ...sg[1]])) {
+            if (tgt === id) continue;
+            const k = key(id, tgt);
+            if (!dep.has(k)) {
+              dep.set(k, 1);
+              viaSig.add(k);
+            }
           }
         }
       }
@@ -515,10 +528,22 @@ export function extractKotlin(
     const d = types.get(dst) as TypeInfo;
     const k = key(src, dst);
     const sigs = d.sigs;
-    const contracts = [...(usedContracts.get(k) ?? [])].sort().map((m) => {
+    const named = (m: string) => {
       const sg = sigs.get(m);
       return sg ? K.cleanSig(m, sg.params, sg.ret) : m;
-    });
+    };
+    const contracts = [...(usedContracts.get(k) ?? [])].sort().map(named);
+    // Who does the calling, in the source's own vocabulary. An empty `from` is a
+    // call outside any method — a property initialiser or an `init` block.
+    const calls = [...(callSites.get(k) ?? new Map<string, Set<string>>())]
+      .map(([from, to]) => {
+        const sg = from ? s.sigs.get(from) : undefined;
+        return {
+          from: sg ? K.cleanSig(from, sg.params, sg.ret) : from,
+          to: [...to].sort().map(named),
+        };
+      })
+      .sort((a, b) => a.from.localeCompare(b.from));
     edges.push({
       src,
       dst,
@@ -533,6 +558,7 @@ export function extractKotlin(
       identifierOnly: d.component === "VO" && d.sublayer === "model",
       viaSignature: viaSig.has(k),
       contracts: rel === "DEPENDS_ON" ? contracts : [],
+      calls: rel === "DEPENDS_ON" ? calls : [],
       // Referencing another context's aggregate by id is how you avoid coupling to
       // it. Reporting that as a breach would penalise the design that got it right,
       // so REFERENCES carries no verdict — `crossDomain` still marks where it runs.

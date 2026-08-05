@@ -211,6 +211,36 @@ export function cleanSig(name: string, params: string, ret: string): string {
     .trim();
 }
 
+/**
+ * A declaration body split at its method boundaries, so a call can be attributed to
+ * the method making it rather than only to the type.
+ *
+ * The first region is whatever precedes the first method — a primary constructor, a
+ * property initialiser, an `init` block — and carries no name. Calls live there too,
+ * and scanning only the named regions would silently drop them.
+ *
+ * Bounded the same crude way declarations are: one method start to the next. A call
+ * inside a lambda therefore counts as the method containing the lambda, which is
+ * what you would want anyway.
+ */
+export function methodRegions(body: string[]): { from: string; lines: string[] }[] {
+  const starts: { at: number; name: string }[] = [];
+  for (let i = 0; i < body.length; i++) {
+    const m = SIG.exec(body[i] as string);
+    if (m?.groups) starts.push({ at: i, name: m.groups.name as string });
+  }
+  if (!starts.length) return [{ from: "", lines: body }];
+
+  const out: { from: string; lines: string[] }[] = [];
+  const head = body.slice(0, (starts[0] as { at: number }).at);
+  if (head.length) out.push({ from: "", lines: head });
+  starts.forEach((s, k) => {
+    const end = k + 1 < starts.length ? (starts[k + 1] as { at: number }).at : body.length;
+    out.push({ from: s.name, lines: body.slice(s.at, end) });
+  });
+  return out;
+}
+
 /** Method signatures in a type body, joining multi-line ones by bracket depth. */
 export function collectSigs(body: string[]): Map<string, Signature> {
   const out = new Map<string, Signature>();
