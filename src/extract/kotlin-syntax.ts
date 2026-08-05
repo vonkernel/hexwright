@@ -253,19 +253,31 @@ export function collectSigs(body: string[]): Map<string, Signature> {
     let depth = 0;
     let started = false;
     for (let j = i; j < Math.min(i + 30, body.length); j++) {
-      let line = body[j] as string;
-      if (j === i) line = line.slice(line.indexOf("(", line.indexOf("fun")));
-      for (const ch of line) {
+      const raw = body[j] as string;
+      // On the opening line the parameter list starts after `fun <name>`; on a
+      // continuation line it starts at the beginning.
+      const offset = j === i ? raw.indexOf("(", raw.indexOf("fun")) : 0;
+      const line = raw.slice(offset);
+      let closedAt = -1;
+      for (let c = 0; c < line.length; c++) {
+        const ch = line[c] as string;
         if (ch === "(") {
           depth++;
           started = true;
         } else if (ch === ")") depth--;
         buf.push(ch);
-        if (started && depth === 0) break;
+        if (started && depth === 0) {
+          closedAt = offset + c;
+          break;
+        }
       }
       if (started && depth === 0) {
-        const parts = (body[j] as string).split(")");
-        out.set(name, { params: buf.join(""), ret: parts[parts.length - 1] as string, isPublic });
+        // Everything after the parameter list's own closing bracket, whose position
+        // the depth count above already knows. Splitting the line on `)` instead
+        // takes the piece after the *last* one, which an expression body ending in
+        // a call — `fun f(): Boolean = g()` — leaves empty, silently dropping the
+        // return type from every signature the tool prints.
+        out.set(name, { params: buf.join(""), ret: raw.slice(closedAt + 1), isPublic });
         break;
       }
       buf.push(" ");
