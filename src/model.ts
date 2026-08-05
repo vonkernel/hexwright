@@ -86,6 +86,14 @@ export interface Edge {
   viaSignature: boolean;
   /** Signatures of the methods actually called. */
   contracts: string[];
+  /**
+   * Which of the source's methods reach the target, and what each calls there.
+   *
+   * `contracts` says what is used; this says who uses it. `from` is the caller's
+   * cleaned signature, or empty for a call outside any method — a property
+   * initialiser or an `init` block.
+   */
+  calls: { from: string; to: string[] }[];
   /** Why this breaks a design rule. Empty means it does not. */
   violation: string;
   status?: Status;
