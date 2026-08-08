@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
+import { exchange } from "./interface.ts";
 import { serveStdio } from "./mcp.ts";
 import type { Graph } from "./model.ts";
 import { edgeKey } from "./model.ts";
@@ -9,6 +10,7 @@ import { deltaSummary, toTsv } from "./output/tsv.ts";
 import { loadProfile } from "./profile.ts";
 import type { Detected } from "./project.ts";
 import { detectSource } from "./project.ts";
+import { renderExchange } from "./render/exchange.ts";
 import type { Selection, View } from "./render/select.ts";
 import { NothingToDraw, select } from "./render/select.ts";
 import { renderSvg } from "./render/svg.ts";
@@ -24,6 +26,8 @@ const USAGE = `hexwright — design graph for hexagonal codebases
   hexwright mcp     --repo <path> [options]     serve MCP over stdio
   hexwright serve   --repo <path> [options]     web UI (and MCP with --mcp)
   hexwright render  --repo <path> [options]     write an SVG (and PNG) for a PR
+  hexwright interface --repo <path> --provider <d> --consumer <d>
+                                                what one domain uses from another
 
 Options
   --repo <path>        target repository (required)
@@ -65,6 +69,14 @@ render only
 
   Nothing to draw — no violations, or a branch that only adds types and so has
   no before state — is reported on stdout and exits 0.
+
+interface only
+  --provider <domain>  the domain whose contracts are being used   (required)
+  --consumer <domain>  the domain doing the using                  (required)
+  --image <file>       output path; .svg, or .png to rasterize  [interface.svg]
+
+                       Roles, not a pair: the picture answers what the consumer
+                       uses from the provider. Reverse them for the other question.
 `;
 
 function main(): number {
@@ -84,6 +96,8 @@ function main(): number {
       scope: { type: "string", default: "all" },
       view: { type: "string", default: "delta" },
       at: { type: "string", default: "head" },
+      provider: { type: "string" },
+      consumer: { type: "string" },
       layout: { type: "string" }, // no default — chosen to suit the view
       image: { type: "string" },
       identifiers: { type: "boolean", default: false },
@@ -92,7 +106,11 @@ function main(): number {
   });
 
   const cmd = positionals[0] ?? "extract";
-  if (v.help || !v.repo || !["extract", "check", "mcp", "serve", "render"].includes(cmd)) {
+  if (
+    v.help ||
+    !v.repo ||
+    !["extract", "check", "mcp", "serve", "render", "interface"].includes(cmd)
+  ) {
     process.stdout.write(USAGE);
     return v.help ? 0 : 1;
   }
@@ -158,6 +176,58 @@ function main(): number {
       if (v.mcp) void serveStdio(() => source.query(), project);
     });
     return -1;
+  }
+
+  if (cmd === "interface") {
+    if (!v.provider || !v.consumer) {
+      process.stderr.write("interface needs --provider <domain> and --consumer <domain>\n");
+      return 1;
+    }
+    const domains = [...new Set(graph.nodes.map((n) => n.domain))].sort();
+    for (const [role, name] of [
+      ["provider", v.provider],
+      ["consumer", v.consumer],
+    ] as const) {
+      if (!domains.includes(name)) {
+        process.stderr.write(
+          `no such domain for --${role}: ${name}\n  have: ${domains.join(", ")}\n`,
+        );
+        return 1;
+      }
+    }
+    if (v.provider === v.consumer) {
+      process.stderr.write(
+        "--provider and --consumer are the same domain; there is no boundary between them\n",
+      );
+      return 1;
+    }
+
+    const x = exchange(graph, v.provider, v.consumer);
+    const out = v.image ?? "interface.svg";
+    const svg = renderExchange(x);
+    mkdirSync(dirname(resolve(out)), { recursive: true });
+    const svgPath = out.endsWith(".png") ? `${out.slice(0, -4)}.svg` : out;
+    writeFileSync(svgPath, svg);
+
+    const ops = x.contracts.reduce((a, c) => a + c.operations.filter((o) => o.used).length, 0);
+    process.stdout.write(
+      `${project} @ ${graph.ref}\n` +
+        `  ${v.consumer} → ${v.provider}\n` +
+        (x.empty
+          ? `  ${v.consumer} uses nothing from ${v.provider}\n`
+          : `  drew    ${x.contracts.length} contracts · ${ops} operations used` +
+            ` · ${x.idReferences.length} held by id\n`) +
+        `  wrote   ${svgPath}  (${Math.round(svg.length / 1024)} KB)\n`,
+    );
+    if (out.endsWith(".png")) {
+      const px = toPng(svg, out);
+      process.stdout.write(
+        px
+          ? `  wrote   ${out}  (${px})\n`
+          : "  note    PNG skipped — install @resvg/resvg-js for rasterizing\n",
+      );
+    }
+    return 0;
   }
 
   if (cmd === "render") {

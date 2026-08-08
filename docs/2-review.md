@@ -151,6 +151,43 @@ Costwise the pair is nearly free: the base snapshot is already extracted to
 compute the delta, so `--at base` chooses what to draw rather than analysing
 twice.
 
+## When the change is between two contexts
+
+A delta render answers *what this branch built*. When the change is one bounded
+context reaching into another, the question underneath is narrower: what does it
+use over there, and through which contract.
+
+```bash
+npx hexwright interface --repo . --src server \
+  --provider pay --consumer order --image iface.png
+```
+
+```
+order → pay
+  drew    2 contracts · 4 operations used · 1 held by id
+```
+
+Three columns with the provider's contract in the middle. On the left the
+consumer classes, each with the role it plays in its own domain and the methods
+that do the calling; on the right whoever implements that contract. A line runs
+from a calling method to the operation it calls, so the picture reads as a
+sentence rather than a diagram to trace.
+
+Two things it shows that a graph view cannot:
+
+**Operations offered and never called** stay in the picture, dimmed. That is how
+you see a consumer using a contract badly — reaching for three operations when the
+interface offers a fourth that was built for exactly this.
+
+**What is held by identifier** is listed under the columns rather than among them.
+Depending on a contract binds you to the other context's API; holding an id is
+what you do to avoid that. Drawing them alike would hide which one you have.
+
+`--provider` and `--consumer` are roles, not a pair — reverse them for the other
+direction. A direction with no dependency is a real answer and gets a sentence
+rather than an empty picture, so a script can render both halves without
+special-casing either.
+
 ## The same thing as text
 
 If you want the change in the terminal, or in a comment body rather than an

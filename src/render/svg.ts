@@ -10,6 +10,20 @@ import {
   isCommon,
   organicLayout,
 } from "../view/layout.ts";
+import {
+  ADDED,
+  BG,
+  DIM,
+  FG,
+  FONT,
+  MODIFIED,
+  MUTED,
+  RULE,
+  VIOLATION,
+  esc,
+  fit,
+  hsl,
+} from "./paint.ts";
 
 /**
  * Draws the graph straight to SVG.
@@ -19,39 +33,6 @@ import {
  * what makes two branches comparable.
  * Shape, colour and line rules come from the same definitions as the web UI.
  */
-
-const BG = "#0e1116";
-const FG = "#e6edf3";
-const MUTED = "#8b949e";
-const DIM = "#6e7681";
-const RULE = "#30363d";
-const ADDED = "#f0883e";
-const MODIFIED = "#a371f7";
-const VIOLATION = "#f85149";
-/**
- * Font stack. The tail is for Linux CI containers: with no matching font at all
- * the rasterizer drops every glyph, and the picture becomes quietly useless.
- */
-const FONT =
-  "-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial," +
-  " 'DejaVu Sans', 'Liberation Sans', 'Noto Sans', sans-serif";
-
-const hsl = (h: number, s: number, l: number) => `hsl(${h},${s}%,${l}%)`;
-const esc = (s: string) =>
-  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-
-/** Estimated text width — SVG offers no measurement, so overflow is truncated. */
-function fit(text: string, maxPx: number, fontPx: number): string {
-  const w = (s: string) =>
-    [...s].reduce(
-      (a, c) => a + (c.charCodeAt(0) > 0x2e80 ? 1.0 : /[A-Z]/.test(c) ? 0.62 : 0.5),
-      0,
-    ) * fontPx;
-  if (w(text) <= maxPx) return text;
-  let out = text;
-  while (out.length > 1 && w(`${out}…`) > maxPx) out = out.slice(0, -1);
-  return `${out}…`;
-}
 
 interface Box {
   x: number;
