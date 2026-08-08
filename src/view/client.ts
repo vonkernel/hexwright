@@ -1,6 +1,7 @@
 import cytoscape from "cytoscape";
 import fcose from "cytoscape-fcose";
 import type { Component, Edge, Graph, Node } from "../model.ts";
+import { interfacePanel } from "./interface-panel.ts";
 import {
   CORE,
   LEVEL,
@@ -40,6 +41,7 @@ async function boot(): Promise<void> {
   graph = (await (await fetch("/api/graph")).json()) as Graph;
   const domains = [...new Set(graph.nodes.map((n) => n.domain))];
   hueOf = hueMap(domains);
+  fillDomainPickers([...domains].sort());
   const comps = [...new Set(graph.nodes.map((n) => n.component))].sort(
     (a, b) => LEVEL[a] - LEVEL[b],
   );
@@ -667,7 +669,58 @@ function main(): void {
     for (const c of q<HTMLInputElement>(".df")) c.checked = false;
     apply();
   };
+  $("tgraph").onclick = () => showTab("graph");
+  $("tiface").onclick = () => showTab("iface");
+  for (const id of ["selProvider", "selConsumer"]) {
+    ($(id) as HTMLSelectElement).onchange = () => void loadInterface();
+  }
   void boot();
+}
+
+/**
+ * The two domain pickers. Defaulted to different domains so the first view says
+ * something — the same domain twice has no boundary to draw.
+ */
+function fillDomainPickers(domains: string[]): void {
+  const p = $("selProvider") as HTMLSelectElement;
+  const c = $("selConsumer") as HTMLSelectElement;
+  for (const sel of [p, c]) {
+    sel.innerHTML = domains.map((d) => `<option value="${d}">${d}</option>`).join("");
+  }
+  p.value = domains[0] ?? "";
+  c.value = domains[1] ?? domains[0] ?? "";
+}
+
+function showTab(which: "graph" | "iface"): void {
+  const iface = which === "iface";
+  $("tgraph").classList.toggle("on", !iface);
+  $("tiface").classList.toggle("on", iface);
+  // Explicit values, not "": clearing an inline style falls back to the stylesheet,
+  // and both panels are display:none there — so "" would hide what we just opened.
+  $("graphCtl").style.display = iface ? "none" : "block";
+  $("ifaceCtl").style.display = iface ? "block" : "none";
+  $("cy").style.display = iface ? "none" : "block";
+  $("iface").style.display = iface ? "block" : "none";
+  // The graph's node inspector belongs to the graph.
+  if (iface) $("info").style.display = "none";
+  if (iface) void loadInterface();
+}
+
+/** Wires the DOM and fetch into the panel; the rules themselves live next door. */
+const panel = interfacePanel({
+  provider: () => ($("selProvider") as HTMLSelectElement).value,
+  consumer: () => ($("selConsumer") as HTMLSelectElement).value,
+  show: (html) => {
+    $("iface").innerHTML = html;
+  },
+  get: async (url) => {
+    const res = await fetch(url);
+    return { ok: res.ok, text: await res.text() };
+  },
+});
+
+async function loadInterface(): Promise<void> {
+  await panel.load();
 }
 
 main();
