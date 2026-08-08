@@ -1,6 +1,7 @@
 import cytoscape from "cytoscape";
 import fcose from "cytoscape-fcose";
 import type { Component, Edge, Graph, Node } from "../model.ts";
+import { interfacePanel } from "./interface-panel.ts";
 import {
   CORE,
   LEVEL,
@@ -705,28 +706,21 @@ function showTab(which: "graph" | "iface"): void {
   if (iface) void loadInterface();
 }
 
-/**
- * Fetch the picture rather than draw it here. The server renders it with the same
- * function the CLI writes to a file, so the tab and a pull request's image cannot
- * drift apart — which two implementations of one layout eventually would.
- */
+/** Wires the DOM and fetch into the panel; the rules themselves live next door. */
+const panel = interfacePanel({
+  provider: () => ($("selProvider") as HTMLSelectElement).value,
+  consumer: () => ($("selConsumer") as HTMLSelectElement).value,
+  show: (html) => {
+    $("iface").innerHTML = html;
+  },
+  get: async (url) => {
+    const res = await fetch(url);
+    return { ok: res.ok, text: await res.text() };
+  },
+});
+
 async function loadInterface(): Promise<void> {
-  const provider = ($("selProvider") as HTMLSelectElement).value;
-  const consumer = ($("selConsumer") as HTMLSelectElement).value;
-  const panel = $("iface");
-  if (!provider || !consumer) return;
-  if (provider === consumer) {
-    panel.innerHTML =
-      '<div style="color:#8b949e;padding:20px 4px">Pick two different domains — ' +
-      "a domain has no boundary with itself.</div>";
-    return;
-  }
-  panel.innerHTML = '<div style="color:#6e7681;padding:20px 4px">drawing…</div>';
-  const url = `/api/interface?provider=${encodeURIComponent(provider)}&consumer=${encodeURIComponent(consumer)}`;
-  const res = await fetch(url);
-  panel.innerHTML = res.ok
-    ? await res.text()
-    : `<div style="color:#f85149;padding:20px 4px">${await res.text()}</div>`;
+  await panel.load();
 }
 
 main();
