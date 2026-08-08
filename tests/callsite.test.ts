@@ -68,13 +68,11 @@ describe("calls are attributed to the method making them", () => {
         ),
       ),
     );
-    // `pay` loses its return type here, and that is not this change: an expression
-    // body ending in `)` swallows it in `collectSigs`, so `api` reads the same way.
-    // `from` comes from the same signatures, which is the point — it should read
-    // like the rest of the type's contract, warts included. Filed separately.
+    // `from` comes from the same signatures as `api`, so it carries the return type
+    // even on an expression body — which it did not until #25.
     expect(e.calls).toEqual([
       { from: "drop(ref: String)", to: ["cancel(ref: String)"] },
-      { from: "pay(ref: String)", to: ["charge(ref: String): Boolean"] },
+      { from: "pay(ref: String): Boolean", to: ["charge(ref: String): Boolean"] },
     ]);
   });
 

@@ -356,6 +356,59 @@ describe("a companion object's references are not the enclosing type's", () => {
   });
 });
 
+describe("a signature keeps its return type", () => {
+  /** Every shape below is one class, so one extraction answers all of them. */
+  const api = (methods: string): string[] => {
+    const g = graphOf({
+      "com/example/media/application/service/Shapes.kt": `package ${BASE_PACKAGE}.media.application.service\n\nclass Shapes {\n${methods}}\n`,
+    });
+    return (g.nodes.find((n) => n.name === "Shapes")?.api ?? []).sort();
+  };
+
+  it("survives an expression body that ends in a call", () => {
+    // The return type used to be read as whatever followed the *last* `)` on the
+    // line, which an expression body ending in a call leaves empty.
+    expect(api("    fun expr(ref: String): Boolean = ref.isEmpty()\n")).toEqual([
+      "expr(ref: String): Boolean",
+    ]);
+  });
+
+  it("survives a generic return type on an expression body", () => {
+    expect(api("    fun generic(): Map<String, List<Int>> = emptyMap()\n")).toEqual([
+      "generic(): Map<String, List<Int>>",
+    ]);
+  });
+
+  it("survives a parameter list spread over several lines", () => {
+    // The call in the body is what makes this a case: without one there is no second
+    // `)` on the closing line and the old reading happened to land correctly.
+    expect(
+      api("    fun multi(\n        a: Int,\n        b: Int,\n    ): Boolean = a.equals(b)\n"),
+    ).toEqual(["multi(a: Int, b: Int,): Boolean"]);
+  });
+
+  it("keeps a function type, whose own brackets could be mistaken for the list", () => {
+    expect(api("    fun fnType(): (String) -> Unit = {}\n")).toEqual([
+      "fnType(): (String) -> Unit",
+    ]);
+  });
+
+  it("is unchanged for the shapes that already worked", () => {
+    // A block body ends the line at `{`, and an expression body with no call has no
+    // second `)`. Neither ever met the defect, and neither may move now.
+    expect(
+      api(
+        "    fun block(ref: String): Boolean {\n        return true\n    }\n" +
+          "    fun simple(ref: String): Boolean = true\n",
+      ),
+    ).toEqual(["block(ref: String): Boolean", "simple(ref: String): Boolean"]);
+  });
+
+  it("adds nothing where the source declares nothing", () => {
+    expect(api("    fun inferred(ref: String) = ref.trim()\n")).toEqual(["inferred(ref: String)"]);
+  });
+});
+
 describe("`fun interface` is a declaration, not a file-level function", () => {
   it("becomes a node and keeps its own body", () => {
     const g = graphOf({
