@@ -40,6 +40,7 @@ async function boot(): Promise<void> {
   graph = (await (await fetch("/api/graph")).json()) as Graph;
   const domains = [...new Set(graph.nodes.map((n) => n.domain))];
   hueOf = hueMap(domains);
+  fillDomainPickers([...domains].sort());
   const comps = [...new Set(graph.nodes.map((n) => n.component))].sort(
     (a, b) => LEVEL[a] - LEVEL[b],
   );
@@ -667,7 +668,65 @@ function main(): void {
     for (const c of q<HTMLInputElement>(".df")) c.checked = false;
     apply();
   };
+  $("tgraph").onclick = () => showTab("graph");
+  $("tiface").onclick = () => showTab("iface");
+  for (const id of ["selProvider", "selConsumer"]) {
+    ($(id) as HTMLSelectElement).onchange = () => void loadInterface();
+  }
   void boot();
+}
+
+/**
+ * The two domain pickers. Defaulted to different domains so the first view says
+ * something — the same domain twice has no boundary to draw.
+ */
+function fillDomainPickers(domains: string[]): void {
+  const p = $("selProvider") as HTMLSelectElement;
+  const c = $("selConsumer") as HTMLSelectElement;
+  for (const sel of [p, c]) {
+    sel.innerHTML = domains.map((d) => `<option value="${d}">${d}</option>`).join("");
+  }
+  p.value = domains[0] ?? "";
+  c.value = domains[1] ?? domains[0] ?? "";
+}
+
+function showTab(which: "graph" | "iface"): void {
+  const iface = which === "iface";
+  $("tgraph").classList.toggle("on", !iface);
+  $("tiface").classList.toggle("on", iface);
+  // Explicit values, not "": clearing an inline style falls back to the stylesheet,
+  // and both panels are display:none there — so "" would hide what we just opened.
+  $("graphCtl").style.display = iface ? "none" : "block";
+  $("ifaceCtl").style.display = iface ? "block" : "none";
+  $("cy").style.display = iface ? "none" : "block";
+  $("iface").style.display = iface ? "block" : "none";
+  // The graph's node inspector belongs to the graph.
+  if (iface) $("info").style.display = "none";
+  if (iface) void loadInterface();
+}
+
+/**
+ * Fetch the picture rather than draw it here. The server renders it with the same
+ * function the CLI writes to a file, so the tab and a pull request's image cannot
+ * drift apart — which two implementations of one layout eventually would.
+ */
+async function loadInterface(): Promise<void> {
+  const provider = ($("selProvider") as HTMLSelectElement).value;
+  const consumer = ($("selConsumer") as HTMLSelectElement).value;
+  const panel = $("iface");
+  if (!provider || !consumer) return;
+  if (provider === consumer) {
+    panel.innerHTML =
+      '<div style="color:#8b949e;padding:20px 4px">Pick two different domains — ' +
+      "a domain has no boundary with itself.</div>";
+    return;
+  }
+  panel.innerHTML = '<div style="color:#6e7681;padding:20px 4px">drawing…</div>';
+  const url = `/api/interface?provider=${encodeURIComponent(provider)}&consumer=${encodeURIComponent(consumer)}`;
+  const res = await fetch(url);
+  panel.innerHTML = res.ok
+    ? await res.text()
+    : `<div style="color:#f85149;padding:20px 4px">${await res.text()}</div>`;
 }
 
 main();
