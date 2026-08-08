@@ -135,6 +135,35 @@ for `core` and `all` (concentric rings, read as a shape). `--layout
 organic|grid|hex` overrides; `grid` lists domains left to right, ignoring
 coupling.
 
+## What one domain uses from another
+
+```bash
+hexwright interface --repo . --provider pay --consumer order --image iface.png
+```
+
+```
+  order → pay
+  drew    2 contracts · 4 operations used · 1 held by id
+```
+
+Three columns, the provider's contract in the middle: each interface the consumer
+reaches with its operations, the consumer classes on the left with the role each
+plays in its own domain and the methods that do the calling, and the
+implementations on the right.
+
+Roles rather than a pair of names. Drawing whatever runs between two domains
+leaves the ambiguous cases ambiguous; saying which one provides makes the picture
+a statement. Reverse them for the other question — and a direction with no
+dependency is an answer, printed as one rather than drawn as a blank.
+
+An operation the provider offers and this consumer never calls stays in the
+picture, dimmed. It is how you see whether the consumer is using the right part
+of the contract.
+
+What is held by identifier is listed under the columns, not among them: depending
+on a contract binds you to the other domain's API, holding an id is what you do
+to avoid that, and flattening the two would lose the distinction.
+
 ## Exit codes
 
 | command | 1 | 0 |
@@ -142,6 +171,7 @@ coupling.
 | `check` | the repository has a violation — with `--scope delta`, only one the branch introduced | otherwise |
 | `render` | a bad argument, or a base ref that is not in the clone | an image was written, **or there was nothing to draw** |
 | `extract` | the source root or the base ref cannot be read | otherwise |
+| `interface` | a role is missing, names no domain, or both name the same one | a picture was written, **including one saying nothing is used** |
 
 `render` treats an empty picture as an answer rather than a failure. `--view
 violations` on the branch that removed the last one, and `--at base` on a branch
