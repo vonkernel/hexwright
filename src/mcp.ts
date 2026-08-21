@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { exchange } from "./interface.ts";
 import type { Edge, Node } from "./model.ts";
 import type { GraphQuery } from "./query.ts";
 
@@ -8,9 +9,10 @@ import type { GraphQuery } from "./query.ts";
  * The agent-facing interface.
  *
  * Nothing obtainable by reading a file lives here — an agent already has Read
- * and Grep, and they are usually faster. What is left is three things: a verdict
- * over the whole graph, the structural diff against a base, and dependencies
- * followed through signatures to references whose name never appears in the text.
+ * and Grep, and they are usually faster. What is left is four things: a verdict
+ * over the whole graph, the structural diff against a base, dependencies followed
+ * through signatures to references whose name never appears in the text, and the
+ * contract between two bounded contexts.
  *
  * Descriptions carry when to reach for a tool, not only what it returns. That
  * self-describing quality is most of why this is an MCP server. What a
@@ -175,6 +177,79 @@ export function buildServer(getQuery: () => GraphQuery, _project: string): McpSe
           out.push("", `reaches ${reach.length} more type(s) beyond the direct callers:`);
           for (const r of reach) out.push(`  hop ${r.hop}  ${brief(r.node)}`);
         }
+      }
+      return ok(out.join("\n"));
+    },
+  );
+
+  server.registerTool(
+    "domain_interface",
+    {
+      title: "What one domain uses from another",
+      description:
+        "The contract between two bounded contexts: which of the provider's interfaces the " +
+        "consumer calls, which operations of each, and which of the consumer's own methods do " +
+        "the calling — plus the operations the provider offers that nobody here calls. Reach " +
+        "for it before adding a call across a domain boundary: the operation you need may " +
+        "already exist and go unused, and adding a second one that does the same thing is the " +
+        "mistake this prevents. Also use it to see the whole surface you would break by " +
+        "changing an interface. provider is the domain being used; consumer is the one using " +
+        "it. Reverse them for the other direction — the two answers are different questions.",
+      inputSchema: {
+        provider: z.string().describe("the domain whose contracts are being used"),
+        consumer: z.string().describe("the domain doing the using"),
+      },
+    },
+    async ({ provider, consumer }) => {
+      const q = getQuery();
+      const domains = [...new Set(q.graph.nodes.map((n) => n.domain))].sort();
+      for (const [role, name] of [
+        ["provider", provider],
+        ["consumer", consumer],
+      ] as const) {
+        if (!domains.includes(name)) {
+          return ok(`no such domain for ${role}: ${name}\n  have: ${domains.join(", ")}`);
+        }
+      }
+      if (provider === consumer) {
+        return ok(`${provider} has no boundary with itself — name two different domains`);
+      }
+
+      const x = exchange(q.graph, provider, consumer);
+      if (x.empty) {
+        return ok(
+          `${consumer} uses nothing from ${provider}.\n` +
+            "No contract is called and no aggregate is referenced by id. " +
+            `The dependency may run the other way — try provider ${consumer}, consumer ${provider}.`,
+        );
+      }
+
+      const out: string[] = [`${consumer} → ${provider}`];
+      for (const c of x.contracts) {
+        out.push("", `${c.iface.name} [${c.iface.component}]  ${c.iface.file}:${c.iface.line}`);
+        for (const op of c.operations) {
+          // `free` is the reason an agent asks before adding a call: an operation
+          // already offered and unused is the one to reach for.
+          out.push(`  ${op.used ? "used" : "free"}   ${op.sig}`);
+        }
+        for (const u of c.consumers) {
+          const role = u.implementsTypes.length
+            ? ` : ${u.implementsTypes.map((t) => t.name).join(", ")}`
+            : "";
+          out.push(`  from   ${u.type.name}${role}  — ${u.type.file}:${u.type.line}`);
+          for (const f of u.from) {
+            out.push(`           ${f.method || "(outside any method)"} → ${f.to.join(", ")}`);
+          }
+        }
+        out.push(
+          c.implementations.length
+            ? `  impl   ${c.implementations.map((i) => i.name).join(", ")}`
+            : "  impl   none in this domain — implemented elsewhere, or not yet",
+        );
+      }
+      if (x.idReferences.length) {
+        out.push("", "held by id, not called — a reference to the aggregate, no contract:");
+        for (const r of x.idReferences) out.push(`  ${r.from.name} → ${r.to.name}`);
       }
       return ok(out.join("\n"));
     },

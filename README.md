@@ -23,7 +23,7 @@ directions:
   the graph reads declarations from the working tree rather than commits.
 - **The agent checks itself first.** Boundary verdicts are computed over the
   whole graph, so they are not something an agent can grep for and therefore not
-  something it can skip by accident. Three MCP tools let it ask what it changed,
+  something it can skip by accident. Four MCP tools let it ask what it changed,
   what that reaches, and whether it broke a rule — before it asks you to look.
 
 The human stays in the loop; what changes is that the loop costs a glance rather
@@ -201,6 +201,7 @@ what files cannot answer.
 | `check_violations(scope)` | a verdict over the whole graph. `scope: "delta"` = only what this branch introduced |
 | `get_delta()` | the structural diff against the base, per changed type |
 | `dependencies(name, direction, hops)` | which methods a consumer actually calls, and which a port declares that nobody does |
+| `domain_interface(provider, consumer)` | the contract between two bounded contexts — what is called, by which method, and what is offered and unused |
 
 Each description says *when* to reach for the tool, not only what it returns —
 that is most of why this is an MCP server rather than a CLI the agent has to be

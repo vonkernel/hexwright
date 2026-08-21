@@ -39,7 +39,7 @@ The graph re-reads the source on every call, so an answer always reflects the
 files as they are now — including an edit made a second ago. When nothing changed
 a call costs about 7 ms; after an edit, about 100 ms to re-extract.
 
-## Three tools
+## Four tools
 
 Anything obtainable by reading a file is not here. The agent already has Read and
 Grep, and they are usually faster. What is left is what files cannot answer.
@@ -72,6 +72,42 @@ declares 17, never called (4):
 Four dead methods, and two consumers whose overlap is five of seventeen. That is
 an interface asking to be split — a conclusion nobody derives by reading the port
 file, because the port file shows declarations, not callers.
+
+## Before calling across a domain boundary
+
+```
+domain_interface(provider: "pay", consumer: "order")
+```
+
+```
+order → pay
+
+ChargeUseCase [UseCase]  com/shop/pay/application/port/inbound/ChargeUseCase.kt:3
+  used   charge(ref: String, amount: Long): Boolean
+  used   cancel(ref: String)
+  free   quote(ref: String): Long
+  from   PaymentAdapter : PaymentPort  — com/shop/order/adapter/out/PaymentAdapter.kt:6
+           charge(orderId: String, amount: Long): Boolean → charge(ref: String, amount: Long): Boolean
+           drop(orderId: String) → cancel(ref: String)
+  impl   LedgerPayService, PayService
+
+held by id, not called — a reference to the aggregate, no contract:
+  Order → Payment
+```
+
+`free` is the line that earns this tool. It marks an operation the provider
+already offers that nobody here calls — so an agent about to add
+`fun estimate(...)` to `ChargeUseCase` can see that `quote` is sitting there
+unused. Without it the cheapest-looking move is to add a second operation doing
+what the first already does, and nothing in the diff afterwards will say so.
+
+The rest answers what you would break. Every caller is named with its file and
+line, and so is the method inside it, so changing a signature stops being a
+search.
+
+`provider` is the domain being used, `consumer` the one using it. Reversing them
+asks a different question rather than the same one backwards — and a direction
+with nothing in it says so, and names the other.
 
 ## The picture, and the stop
 
