@@ -50,6 +50,12 @@ export const shell = (): string => `<!doctype html>
  .lk .rel{margin-left:auto;color:#6e7681;font-size:9.5px;flex:none;padding-left:6px}
  .lk .sig{white-space:normal;font-family:ui-monospace,Menlo,monospace;font-size:10.5px;
    line-height:1.5;color:#8b949e} .lk .sig b{color:#79c0ff;font-weight:600}
+ #tabs{display:flex;gap:4px;margin:0 0 12px}
+ #tabs button{flex:1;margin:0}
+ #iface{flex:1;background:#0e1116;overflow:auto;display:none;padding:14px}
+ #iface svg{max-width:100%;height:auto}
+ #ifaceCtl{display:none} select{width:100%;background:#21262d;color:#c9d1d9;
+   border:1px solid #30363d;border-radius:5px;padding:5px 7px;font-size:12px;margin:2px 0 8px}
 </style>
 <div id="side">
  <h1 id="title">…</h1>
@@ -58,6 +64,24 @@ export const shell = (): string => `<!doctype html>
  <div id="deltaBox"><div id="delta"></div></div>
  <div id="stat"></div>
 
+ <div id="tabs"><button id="tgraph" class="on">Graph</button><button id="tiface">Interface</button></div>
+
+ <div id="ifaceCtl">
+  <h2 style="border-top:none;padding-top:0">Provider</h2>
+  <select id="selProvider"></select>
+  <h2>Consumer</h2>
+  <select id="selConsumer"></select>
+  <div class="sub" style="margin:8px 0 0"><div class="d">Roles, not a pair — the picture
+   answers what the <b>consumer</b> uses from the <b>provider</b>. Swap them for the
+   other question; a direction with no dependency says so.</div></div>
+  <div class="sub" style="margin:10px 0 0"><b>Reading it</b><div class="d">The contract sits
+   in the middle with its operations. A filled marker is an operation actually called;
+   a hollow one is offered and unused, which is how you see a consumer using the wrong
+   part of a contract. What is held by <b>id</b> is listed underneath — that is a
+   reference to an aggregate, not a call.</div></div>
+ </div>
+
+ <div id="graphCtl">
  <h2>View</h2>
  <button id="pcore">Core only</button><button id="pall">All</button>
  <label style="margin-top:9px"><input type=checkbox id="deltaOnly">
@@ -81,8 +105,10 @@ export const shell = (): string => `<!doctype html>
  <h2>Edges</h2>
  <label><input type=checkbox id="showId">Show value-type edges</label>
  <label><input type=checkbox id="crossOnly">Cross-domain edges only</label>
- <div class="sub" style="margin:6px 0 0"><b>Identifier edges</b><div class="d">references like
-  FamilyId·UserId — a shared coordinate system, not coupling. Hidden by default.</div></div>
+ <div class="sub" style="margin:6px 0 0"><b>Value-type edges</b><div class="d">references into
+  the domain model's value objects and enums, plus identifiers whose aggregate is outside
+  the analysed source. Nearly everything touches them, so they are folded away by default.
+  A resolved identifier is drawn as <b>REFERENCES</b> at the aggregate instead.</div></div>
 
  <h2>Edge types</h2>
  <label><input type=checkbox class=rf value="DEPENDS_ON" checked>
@@ -109,7 +135,8 @@ export const shell = (): string => `<!doctype html>
  <h2>Domains</h2>
  <button id="allDomOn">All</button><button id="allDomOff">None</button>
  <div id="doms"></div>
+ </div>
 </div>
-<div id="cy"></div><div id="info"></div>
+<div id="cy"></div><div id="iface"></div><div id="info"></div>
 <script src="/client.js"></script>
 `;

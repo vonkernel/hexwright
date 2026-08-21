@@ -54,6 +54,32 @@ Click an **edge** and the panel shows which contract methods the source actually
 calls on the target — not just that a dependency exists, but which part of the
 interface it uses.
 
+## The Interface tab
+
+The graph tab answers *what is there*. The **Interface** tab answers a narrower
+question that a graph is bad at: what does one bounded context use from another,
+and through which contract.
+
+Pick a **provider** and a **consumer** — roles, not a pair. The picture is the
+provider's contracts down the middle with their operations, the consuming classes
+on the left with the role each plays in its own domain and the methods that do the
+calling, and the implementations on the right.
+
+An operation offered and never called stays, dimmed. That is how you spot a
+consumer using a contract badly — reaching for three operations while a fourth,
+built for exactly this, goes untouched.
+
+What is held by **id** is listed underneath rather than among the contracts.
+Depending on a contract binds you to the other context's API; holding an
+identifier is what you do to avoid that.
+
+Swap the two for the other direction. A direction with no dependency is a real
+answer and says so.
+
+The picture is drawn by the server with the same code `hexwright interface`
+writes to a file, so what you are looking at and what you would attach to a pull
+request are the same image.
+
 ## Boundaries between contexts
 
 Two switches answer most boundary questions.
